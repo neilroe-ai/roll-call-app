@@ -142,3 +142,17 @@ Fix `sets/typescript/` in the setup-for-coding repo.
 
 Left for the user in the GitHub UI: Dependabot alerts, account 2FA, optional
 branch protection on `main`.
+
+Branch protection is **not available**: GitHub Free does not offer it on private
+repos (rulesets API returns 403, "Upgrade to GitHub Pro or make this repository
+public"). 2FA is on. Dependabot alerts left to the user.
+
+## Step 7 — Settle Sheet access (CONCEPT.md open decision 2)
+Chosen: **direct Sheets API with Google sign-in**, scope `drive.file`. The Apps
+Script endpoint was rejected on the ADR 0001 constraint. Recorded as
+`docs/adr/0002-google-sheet-access-via-browser-oauth.md`; CONCEPT.md decision 2
+marked settled.
+
+Knock-on: offline strategy (open decision 4) is now more important, because a
+token can expire mid-lesson. Writes must queue locally; sign-in must never block
+taking roll.

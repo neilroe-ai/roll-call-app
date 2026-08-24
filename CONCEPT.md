@@ -63,9 +63,11 @@ attach a short optional note when awarding or subtracting the point.
 
 ## Open decisions (to settle before/while building)
 1. **TypeScript vs plain JavaScript** for the app.
-2. **How the browser reaches the Google Sheet**: direct Sheets API with Google
-   sign-in (more OAuth setup) vs a small Google Apps Script endpoint that reads/
-   writes the Sheet as its owner (no browser OAuth). 
+2. ~~**How the browser reaches the Google Sheet.**~~ **Settled 2026-08-25:**
+   direct Sheets API with Google sign-in, scope `drive.file`. The Apps Script
+   endpoint was rejected — deployed as "anyone can access" it is an
+   unauthenticated public read/write handle on the Sheet, and its URL ships in
+   the bundle. See `docs/adr/0002-google-sheet-access-via-browser-oauth.md`.
 3. **Framework**: vanilla JS vs a light framework.
 4. **Offline strategy**: how roll call taken with no signal syncs later.
 
