@@ -74,3 +74,5 @@ attach a short optional note when awarding or subtracting the point.
 ## Out of scope (for now)
 - Multiple users, roles, or deployment beyond personal use.
 - A backend server or hosted database.
+
+<!-- ci pr smoke test -->
