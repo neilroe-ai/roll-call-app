@@ -1,0 +1,11 @@
+[importlinter]
+root_package = roll_call
+
+[importlinter:contract:layered]
+name = Layered architecture (imports point inward only)
+type = layers
+layers =
+    roll_call.adapters
+    roll_call.services
+    roll_call.repositories
+    roll_call.domain
