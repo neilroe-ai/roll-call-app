@@ -11,16 +11,9 @@ project: small, light, no server.
   teacher's own Google account.
 
 ## Domain
-- **Student** — a person who is counted in roll call.
-- **Class** — one of 2–3 classes the teacher runs.
-- **Group** — a subdivision within a class (2–3 main groups per class). A student
-  can belong to more than one group. Students also regroup by subject/activity
-  when they move between classes or activities. So: student ↔ group is
-  many-to-many, not one-to-one.
-- **Session** — one roll call: a date + time + the class/group/activity it covers.
-  Roll call is taken each session, each day.
-- **Attendance record** — for one student in one session: a status, an optional
-  note, and a point state. Points can be awarded or subtracted for attendance and for other behaviors. The point state can also have an optional note.
+The agreed terms live in `CONTEXT.md`. In short: roll call is taken against a
+**Group**, which may be a whole class, a subdivision of one, or a set spanning
+classes. **Class** is not a separate concept — "3A" is simply a Group.
 
 ## Status → points (the core logic, worth testing)
 Each record has a status and a resolving point state:
@@ -29,8 +22,8 @@ Each record has a status and a resolving point state:
 |---------|------------------------|-----------------------------------------------|
 | present | awarded (1)            | final                                         |
 | absent  | denied (0)             | final                                         |
-| sick    | held                   | +1 if a sick note arrives; 0 if none by cutoff|
-| other   | held (+ note)          | +1 if paperwork arrives; 0 if none by cutoff  |
+| sick    | held                   | +1 if a sick note arrives; teacher resolves   |
+| other   | held (+ note)          | +1 if paperwork arrives; teacher resolves     |
 
 Randomly awarded points:
 | Behavior  | Point state on the day | Resolves to                                   |
@@ -39,10 +32,12 @@ Randomly awarded points:
 | Negative  | subtract (-1)(+ note)  | final (Note for the record)                   |
 
 
-"Held" is a pending state that later becomes awarded or denied. The teacher can
+"Held" later becomes awarded or denied. There is no cutoff — a held point
+waits until the teacher resolves it, so the app must surface outstanding held
+points or sick notes quietly go uncredited. The teacher can
 attach a short optional note during roll call, especially when choosing "other".
 
-During the class the student might award a point to a student at random for
+During the class the teacher might award a point to a student at random for
  positive behavior or subtract a point for negative behavior. The teacher can
 attach a short optional note when awarding or subtracting the point.
 

@@ -1,10 +1,13 @@
-import type { AttendanceStatus } from '../domain/points';
+import type { AttendanceStatus, PointState } from '../domain/points';
 
 /** One attendance row as stored in the Google Sheet. */
 export interface AttendanceRow {
   studentId: string;
   sessionId: string;
   status: AttendanceStatus;
+  /** Stored, not derived: a held point is resolved by the teacher, so the
+      current state cannot be recomputed from the status alone. */
+  pointState: PointState;
   note?: string;
 }
 
