@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read # gitleaks lists the PR's commits
 
 jobs:
   quality-gates:
@@ -35,3 +36,4 @@ jobs:
           # Required on pull_request events; without it the action hard-fails.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+          GITLEAKS_ENABLE_COMMENTS: 'false' # commenting would need write access

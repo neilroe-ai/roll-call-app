@@ -173,6 +173,13 @@ Also seen once and not a defect: the very first push failed the secret scan with
 root commit, which does not exist. It only happens on the initial push of a repo
 that already has history. Later pushes are green.
 
+3. **Least privilege needed one more scope.** With `contents: read` alone the
+   action got 403 on `GET /pulls/{n}/commits`. Added `pull-requests: read`, and
+   set `GITLEAKS_ENABLE_COMMENTS: 'false'` so it never needs write.
+
+Proven on a throwaway PR (#5, closed): quality-gates passed on a `pull_request`
+event.
+
 **Lesson for the skill:** a gate that only runs in CI is not proven by a local
 `npm run check`. Prove the PR path with a throwaway pull request, not just a
 push to `main`.
