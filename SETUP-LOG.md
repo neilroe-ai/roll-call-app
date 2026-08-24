@@ -42,3 +42,24 @@ Coverage ratchet rule (how to know when to raise the floor):
 The floor is a floor, not a target. `make review` / `make test` prints actual
 coverage each run. When actual sits comfortably above the floor for a while,
 raise `fail_under` in `pyproject.toml` to just under actual. Never lower it.
+
+## Step 3 — Git guardrails (Claude Code PreToolUse hook)
+Scope: **project only** (`.claude/`), committed so it travels with the repo.
+Transferable to global later: copy the script to `~/.claude/hooks/` and add the
+same hook block to `~/.claude/settings.json`, swapping `$CLAUDE_PROJECT_DIR` for `~`.
+
+- `.claude/hooks/block-dangerous-git.sh` — blocks push, reset --hard,
+  clean -f/-fd, branch -D, checkout ./restore ., push --force. Exit 2 tells
+  Claude Code to refuse the command.
+- `.claude/settings.json` — registers it as a PreToolUse hook on `Bash`.
+
+Changed from the stock skill: rewrote the script to be **jq-free** (uses
+python3, falls back to scanning raw hook input). Reason: jq was not installed,
+and the stock script fails *open* (silently allows everything) without it. The
+rewrite degrades to "still catches", never "silently off".
+
+Verified: 6 dangerous commands -> exit 2 (blocked); benign git/uv -> exit 0;
+malformed input containing a pattern -> still blocked.
+
+Note: hooks load at session start, so this guard applies to NEW Claude Code
+sessions. Restart the session for it to intercept commands in-flight.
