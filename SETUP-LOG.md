@@ -105,3 +105,16 @@ First real code seeded: `src/domain/points.ts` implements the attendance/behavio
 point logic from CONCEPT.md, fully tested (5 tests, 100% coverage of domain).
 
 Baseline: `npm run check` exits 0.
+
+## Step 5 — Extract the setup into the /setup-for-coding skill
+The whole setup process (bootstrap + concept + gate set + security) was enshrined
+as a user-invoked skill at `~/.claude/skills/setup-for-coding/`. Structure:
+- `SKILL.md` — phased flow. Two rules baked in: **concept before stack**, and
+  **prove every gate bites**.
+- `bootstrap/` — git guardrails hook, base .gitignore, settings hook.
+- `sets/typescript/` — this repo's config templated (copy, don't regenerate).
+- `sets/python/` — the earlier Python stack templated (from git history).
+- `security/` — Dependabot, CodeQL, least-privilege CI perms, /wizard dashboard
+  checklist (secret scanning, push protection, 2FA, branch protection).
+
+Not yet dry-run on a fresh project (the "work out the bugs" pass).
