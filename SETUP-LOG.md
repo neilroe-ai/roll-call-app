@@ -63,3 +63,16 @@ malformed input containing a pattern -> still blocked.
 
 Note: hooks load at session start, so this guard applies to NEW Claude Code
 sessions. Restart the session for it to intercept commands in-flight.
+
+### Step 3 amendment — push is "ask", not blocked
+Reworked the hook from a hard block into a two-tier permission decision
+(JSON `hookSpecificOutput.permissionDecision`, verified against Claude Code
+2.1.232):
+- **deny** (never permitted): reset --hard, clean -f/-fd, branch -D,
+  checkout ./restore .
+- **ask** (escalates to the user): git push, push --force. Claude runs the
+  push; Claude Code pauses and asks the user to approve each one.
+
+Rationale: user wants Claude to do the pushing, gated by approval, not blocked.
+The `ask` decision holds even after a permission allowlist is added, so a broad
+allowlist cannot auto-approve a push.
