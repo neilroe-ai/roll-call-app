@@ -136,9 +136,8 @@ Skipped (unavailable on a private repo without GitHub Advanced Security):
 CodeQL, secret scanning, push protection. `gitleaks` (CI + pre-commit) and
 `npm audit --audit-level=high` remain the secret and dependency backstops.
 
-**Bug found in the skill:** `security/SECURITY.md` step 3 says the TypeScript
-set's `ci.yml` "already declares `permissions: contents: read`". It does not.
-Fix `sets/typescript/` in the setup-for-coding repo.
+Note: the skill's own `sets/typescript/ci.yml` already declares `permissions`.
+This repo's `ci.yml` predates the skill extraction, so it never got the block.
 
 Left for the user in the GitHub UI: Dependabot alerts, account 2FA, optional
 branch protection on `main`.
@@ -156,3 +155,24 @@ marked settled.
 Knock-on: offline strategy (open decision 4) is now more important, because a
 token can expire mid-lesson. Writes must queue locally; sign-in must never block
 taking roll.
+
+## Step 8 — Fix CI: gitleaks broke every pull request
+The first push exposed two CI faults that `npm run check` cannot catch locally,
+because they are workflow faults, not code faults.
+
+1. **`gitleaks-action` hard-fails on `pull_request` without `GITHUB_TOKEN`.**
+   Every PR failed before reaching the gates. Fixed by passing
+   `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` in the step's `env`. No
+   `GITLEAKS_LICENSE` is needed — the repo belongs to a personal account.
+2. **Actions pinned to majors running the deprecated Node 20 runtime.** Bumped
+   `actions/checkout` v4 -> v7, `actions/setup-node` v4 -> v7,
+   `gitleaks/gitleaks-action` v2 -> v3.
+
+Also seen once and not a defect: the very first push failed the secret scan with
+`ambiguous argument <root-commit>^..HEAD`. gitleaks asks for the parent of the
+root commit, which does not exist. It only happens on the initial push of a repo
+that already has history. Later pushes are green.
+
+**Lesson for the skill:** a gate that only runs in CI is not proven by a local
+`npm run check`. Prove the PR path with a throwaway pull request, not just a
+push to `main`.
