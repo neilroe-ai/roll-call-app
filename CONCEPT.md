@@ -1,0 +1,61 @@
+# Roll Call App — concept
+
+## Purpose
+A single high-school teacher takes roll call across 2–3 classes, several times a
+day, from a phone. Later, the teacher reviews the broader picture on a laptop.
+Attendance drives a points system. This is a personal, single-user learning
+project: small, light, no server.
+
+## Users
+- One teacher. No other roles, no multi-user, no accounts to manage beyond the
+  teacher's own Google account.
+
+## Domain
+- **Student** — a person who is counted in roll call.
+- **Class** — one of 2–3 classes the teacher runs.
+- **Group** — a subdivision within a class (2–3 main groups per class). A student
+  can belong to more than one group. Students also regroup by subject/activity
+  when they move between classes or activities. So: student ↔ group is
+  many-to-many, not one-to-one.
+- **Session** — one roll call: a date + time + the class/group/activity it covers.
+  Roll call is taken each session, each day.
+- **Attendance record** — for one student in one session: a status, an optional
+  note, and a point state.
+
+## Status → points (the core logic, worth testing)
+Each record has a status and a resolving point state:
+
+| Status  | Point state on the day | Resolves to                                   |
+|---------|------------------------|-----------------------------------------------|
+| present | awarded (1)            | final                                         |
+| absent  | denied (0)             | final                                         |
+| sick    | held                   | +1 if a sick note arrives; 0 if none by cutoff|
+| other   | held (+ note)          | +1 if paperwork arrives; 0 if none by cutoff  |
+
+"Held" is a pending state that later becomes awarded or denied. The teacher can
+attach a short note during roll call, especially when choosing "other".
+
+## Platform & stack
+- **Progressive Web App (PWA)**: HTML/CSS/JS, installable on the phone home
+  screen, works offline, hosted as free static files (e.g. GitHub Pages). No
+  server to run or maintain.
+- **Data store**: a Google Sheet acts as the database. Phone writes roll call;
+  laptop reads the broader view.
+- **Sync**: over the internet via the Google Sheet.
+
+## Constraints
+- Single user; keep it small and light.
+- No server, no hosting to operate.
+- Phone-first for taking roll; laptop for review.
+
+## Open decisions (to settle before/while building)
+1. **TypeScript vs plain JavaScript** for the app.
+2. **How the browser reaches the Google Sheet**: direct Sheets API with Google
+   sign-in (more OAuth setup) vs a small Google Apps Script endpoint that reads/
+   writes the Sheet as its owner (no browser OAuth). 
+3. **Framework**: vanilla JS vs a light framework.
+4. **Offline strategy**: how roll call taken with no signal syncs later.
+
+## Out of scope (for now)
+- Multiple users, roles, or deployment beyond personal use.
+- A backend server or hosted database.
