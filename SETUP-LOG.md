@@ -183,3 +183,30 @@ event.
 **Lesson for the skill:** a gate that only runs in CI is not proven by a local
 `npm run check`. Prove the PR path with a throwaway pull request, not just a
 push to `main`.
+
+## Step 9 — Prove every gate bites (TypeScript stack)
+Step 2 proved the gates on the Python stack, which step 4 then replaced. The
+proof was never redone for TypeScript. Done now, each fault introduced then
+reverted:
+
+- **Architecture** — `src/domain/points.ts` importing `../infra/sheetGateway`
+  -> `error domain-is-pure`, 1 violation, exit 1.
+- **Types** — untyped parameter in domain -> `TS7006: Parameter 'x' implicitly
+  has an 'any' type`, exit 2.
+- **Secret scan** — staged `const apiKey = '<32-char high-entropy>'` ->
+  `generic-api-key`, entropy 5.0, `husky - pre-commit script failed (code 1)`,
+  HEAD unchanged.
+
+**Two traps found while proving the secret gate, both worth carrying back:**
+
+1. **AWS's own documentation example key is not detected.**
+   `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` is allowlisted by gitleaks, so a
+   test using it passes and looks like the gate is broken. The test secret must
+   be a genuine-looking high-entropy string next to a keyword such as `apiKey`.
+2. **Overriding `core.hooksPath` to `.husky` silently skips the hook.** husky
+   points it at `.husky/_`, not `.husky`. A test commit run with
+   `git -c core.hooksPath=.husky` bypasses the gate entirely and appears to
+   prove the opposite of the truth. Test with a plain `git commit`.
+
+Both mean a prove-it-bites test can fail *itself* and be misread as a broken
+gate. Confirm the fault reaches the tool before concluding the gate is off.
