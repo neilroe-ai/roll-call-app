@@ -1,0 +1,31 @@
+{
+  "name": "roll-call-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Single-teacher roll call PWA backed by a Google Sheet",
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "arch": "depcruise src",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run arch",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "dependency-cruiser": "^18.2.0",
+    "eslint": "^10.9.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.11"
+  }
+}

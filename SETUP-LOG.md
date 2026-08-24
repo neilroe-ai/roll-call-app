@@ -76,3 +76,32 @@ Reworked the hook from a hard block into a two-tier permission decision
 Rationale: user wants Claude to do the pushing, gated by approval, not blocked.
 The `ask` decision holds even after a permission allowlist is added, so a broad
 allowlist cannot auto-approve a push.
+
+## Step 4 — Convert to TypeScript + PWA stack
+The app is a phone-first PWA backed by a Google Sheet (see CONCEPT.md), so the
+Python scaffolding from steps 1–2 was removed (recoverable from git history) and
+rebuilt in JS/TS. Git guardrails (step 3) were kept unchanged.
+
+Toolchain (uv/ruff/mypy/pytest/import-linter -> Node equivalents):
+- `package.json` — scripts; `npm run check` is the single gate command
+  (format:check, lint, typecheck, test, arch).
+- `tsconfig.json` — TypeScript `strict` project-wide (simpler than the Python
+  per-layer approach; the whole app is small).
+- `eslint.config.js` — ESLint flat config (+ typescript-eslint), formatting
+  rules turned off via eslint-config-prettier.
+- `.prettierrc.json` / `.prettierignore` — Prettier owns formatting. Markdown is
+  ignored so hand-edited docs (CONCEPT.md, SETUP-LOG.md) don't trip the gate.
+- `vitest.config.ts` — Vitest + v8 coverage, floor 70% on statements/branches/
+  functions/lines, scoped to src/domain + src/infra (UI/entry excluded).
+- `.dependency-cruiser.cjs` — layered contract (ui -> infra -> domain, inward
+  only). Single source of truth for layer direction. Replaces .importlinter.
+- `.husky/pre-commit` + `.lintstagedrc.json` — on commit: lint-staged
+  (prettier + eslint --fix on staged), whole-project tsc, gitleaks secret scan.
+  Replaces the Python pre-commit framework.
+- `.github/workflows/ci.yml` — Node CI: format, lint, types, tests+coverage,
+  arch, npm audit, gitleaks.
+
+First real code seeded: `src/domain/points.ts` implements the attendance/behavior
+point logic from CONCEPT.md, fully tested (5 tests, 100% coverage of domain).
+
+Baseline: `npm run check` exits 0.
