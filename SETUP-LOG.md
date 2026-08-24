@@ -118,3 +118,27 @@ as a user-invoked skill at `~/.claude/skills/setup-for-coding/`. Structure:
   checklist (secret scanning, push protection, 2FA, branch protection).
 
 Not yet dry-run on a fresh project (the "work out the bugs" pass).
+
+## Step 6 — Security stack (skill Phase 4, private-repo subset)
+Repo is **private**, so the GHAS-only measures do not apply.
+
+Applied:
+- `.github/dependabot.yml` — weekly `npm` + `github-actions` updates.
+- `.github/workflows/ci.yml` — added `permissions: contents: read`. It was
+  missing, so CI ran on a broad default token.
+- `docs/adr/0001-no-secrets-in-client-code.md` — the PWA ships all its JS to the
+  browser, so no key or token may live in client code. Records what that means
+  for CONCEPT.md open decision 2: browser sign-in is fine; an Apps Script
+  endpoint deployed as "anyone can access" is an unauthenticated public
+  read/write handle on the Sheet, because its URL ships in the bundle.
+
+Skipped (unavailable on a private repo without GitHub Advanced Security):
+CodeQL, secret scanning, push protection. `gitleaks` (CI + pre-commit) and
+`npm audit --audit-level=high` remain the secret and dependency backstops.
+
+**Bug found in the skill:** `security/SECURITY.md` step 3 says the TypeScript
+set's `ci.yml` "already declares `permissions: contents: read`". It does not.
+Fix `sets/typescript/` in the setup-for-coding repo.
+
+Left for the user in the GitHub UI: Dependabot alerts, account 2FA, optional
+branch protection on `main`.
