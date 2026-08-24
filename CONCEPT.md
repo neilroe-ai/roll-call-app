@@ -3,7 +3,7 @@
 ## Purpose
 A single high-school teacher takes roll call across 2–3 classes, several times a
 day, from a phone. Later, the teacher reviews the broader picture on a laptop.
-Attendance drives a points system. This is a personal, single-user learning
+Attendance and other incentives drive a points system. This is a personal, single-user learning
 project: small, light, no server.
 
 ## Users
@@ -20,7 +20,7 @@ project: small, light, no server.
 - **Session** — one roll call: a date + time + the class/group/activity it covers.
   Roll call is taken each session, each day.
 - **Attendance record** — for one student in one session: a status, an optional
-  note, and a point state.
+  note, and a point state. Points can be awarded or subtracted for attendance and for other behaviors. The point state can also have an optional note.
 
 ## Status → points (the core logic, worth testing)
 Each record has a status and a resolving point state:
@@ -32,8 +32,21 @@ Each record has a status and a resolving point state:
 | sick    | held                   | +1 if a sick note arrives; 0 if none by cutoff|
 | other   | held (+ note)          | +1 if paperwork arrives; 0 if none by cutoff  |
 
+Randomly awarded points:
+| Behavior  | Point state on the day | Resolves to                                   |
+|-----------|------------------------|-----------------------------------------------|
+| Positive  | awarded (+1) (+ note)  | final (Note for the record)                   |
+| Negative  | subtract (-1)(+ note)  | final (Note for the record)                   |
+
+
 "Held" is a pending state that later becomes awarded or denied. The teacher can
-attach a short note during roll call, especially when choosing "other".
+attach a short optional note during roll call, especially when choosing "other".
+
+During the class the student might award a point to a student at random for
+ positive behavior or subtract a point for negative behavior. The teacher can
+attach a short optional note when awarding or subtracting the point.
+
+- **Notes Log** each student will have a "Notes Log" where the above mentioned optional notes will be recorded and stamped with date and action(e.g. 23/08/2026 - Negative behavior, minus 1 point, shouting in class) . 
 
 ## Platform & stack
 - **Progressive Web App (PWA)**: HTML/CSS/JS, installable on the phone home
