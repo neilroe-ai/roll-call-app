@@ -8,7 +8,7 @@ import {
   remaining,
   unmark,
 } from './rollCall';
-import type { Group, Student } from './roster';
+import type { Group, Student } from './group';
 import type { Session } from './session';
 
 const session: Session = { id: 'sess1', groupId: 'g1', takenAt: '2026-08-26T09:05:00+08:00' };

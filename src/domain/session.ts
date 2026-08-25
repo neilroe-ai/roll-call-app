@@ -1,5 +1,5 @@
 import { initialPointState, type AttendanceStatus, type PointState } from './points';
-import type { Group } from './roster';
+import type { Group } from './group';
 
 /** An ISO 8601 instant, e.g. `2026-08-25T09:05:00+08:00`. */
 export type Timestamp = string;

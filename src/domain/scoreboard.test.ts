@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { scoreboard } from './scoreboard';
-import type { Student } from './roster';
+import type { Student } from './group';
 import type { AttendanceRecord } from './session';
 import type { BehaviorPoint } from './behavior';
 

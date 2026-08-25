@@ -5,7 +5,7 @@
  * Attendance Status or a Point State.
  */
 import type { BehaviorPoint } from './behavior';
-import type { Student } from './roster';
+import type { Student } from './group';
 import { scoreFor } from './score';
 import type { AttendanceRecord } from './session';
 

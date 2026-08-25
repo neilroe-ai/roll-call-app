@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addMember, isMember, membersOf, removeMember, type Group, type Student } from './roster';
+import { addMember, isMember, membersOf, removeMember, type Group, type Student } from './group';
 
 const ana: Student = { id: 's1', name: 'Ana' };
 const ben: Student = { id: 's2', name: 'Ben' };

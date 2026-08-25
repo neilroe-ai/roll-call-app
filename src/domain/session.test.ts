@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { recordAttendance, unmarkedStudentIds, type Session } from './session';
-import type { Group } from './roster';
+import type { Group } from './group';
 
 const session: Session = { id: 'sess1', groupId: 'g1', takenAt: '2026-08-25T09:05:00+08:00' };
 const group: Group = { id: 'g1', name: '3A', studentIds: ['s1', 's2', 's3'] };

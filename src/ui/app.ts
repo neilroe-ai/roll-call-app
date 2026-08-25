@@ -8,18 +8,18 @@
  */
 import type { AttendanceStatus } from '../domain/points';
 import type { BehaviorPoint } from '../domain/behavior';
-import type { Group, Student } from '../domain/roster';
+import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
 import {
   beginRollCall,
   isComplete,
   mark,
   markOf,
-  recordsToSave,
   remaining,
   type RollCall,
 } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
+import { saveRollCall } from './saveRollCall';
 import type { SheetGateway } from '../infra/sheetGateway';
 
 const STATUSES: readonly AttendanceStatus[] = ['present', 'absent', 'sick', 'other'];
@@ -50,6 +50,9 @@ interface AppState {
   view: View;
   data: Loaded | null;
   rollCall: RollCall | null;
+  /** Set once this roll call's Attendance Records are in the Sheet, so a retry
+      writes only what is still missing. */
+  recordsSaved: boolean;
   message: Message | null;
   busy: boolean;
 }
@@ -82,6 +85,7 @@ export class App {
     view: 'groups',
     data: null,
     rollCall: null,
+    recordsSaved: false,
     message: null,
     busy: false,
   };
@@ -132,21 +136,26 @@ export class App {
     };
     this.set({
       rollCall: beginRollCall(session, group, data.students),
+      recordsSaved: false,
       view: 'rollCall',
       message: null,
     });
   }
 
-  /** Write the Session and its records together. On failure the marks stay on
-      screen, so the teacher can retry rather than take the roll again. */
   private async save(): Promise<void> {
     const rollCall = this.state.rollCall;
     if (!rollCall) return;
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
-      await this.sheet.appendSession(rollCall.session);
-      await this.sheet.appendAttendance(recordsToSave(rollCall));
-      this.set({ rollCall: null, view: 'groups' });
+      await saveRollCall(
+        this.sheet,
+        rollCall,
+        { recordsSaved: this.state.recordsSaved },
+        (progress) => {
+          this.state = { ...this.state, recordsSaved: progress.recordsSaved };
+        },
+      );
+      this.set({ rollCall: null, recordsSaved: false, view: 'groups' });
       await this.reload();
       this.set({ message: { text: 'Roll call saved.', isError: false } });
     } catch (error) {

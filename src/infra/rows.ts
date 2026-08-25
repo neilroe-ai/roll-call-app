@@ -8,7 +8,7 @@
  */
 import type { AttendanceStatus, BehaviorKind, PointState } from '../domain/points';
 import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
-import type { Group, Student } from '../domain/roster';
+import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
 
 /** One tab of the Sheet, with the header row it must start with.

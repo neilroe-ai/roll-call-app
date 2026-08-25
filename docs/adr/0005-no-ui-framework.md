@@ -9,7 +9,7 @@ Settles CONCEPT.md open decision 3.
 
 The app is a small number of phone-first screens: pick a Group, mark each
 Student, review Scores and held points. The logic worth testing — point states,
-Scores, roster membership — already lives in `domain`, which no framework would
+Scores, Group membership — already lives in `domain`, which no framework would
 touch. What remains for the UI is listing things and handling taps.
 
 Preact (~4kb) and Lit (~5kb) were both considered. Either would remove some

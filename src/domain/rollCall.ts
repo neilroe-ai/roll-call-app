@@ -7,7 +7,7 @@
  * ordinary — the teacher taps the wrong row, or a Student walks in late.
  */
 import type { AttendanceStatus } from './points';
-import type { Group, Student } from './roster';
+import type { Group, Student } from './group';
 import { recordAttendance, type AttendanceRecord, type Session } from './session';
 
 export interface RollCall {

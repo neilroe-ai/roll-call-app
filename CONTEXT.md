@@ -6,7 +6,7 @@ uses a different word for one of these, the code or CONCEPT.md is wrong.
 
 ## Language
 
-### People and rosters
+### People and groups
 
 **Student**:
 A person who is counted in roll call. A Student exists independently of any

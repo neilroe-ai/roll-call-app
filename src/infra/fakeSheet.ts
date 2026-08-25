@@ -5,7 +5,7 @@
  */
 import type { BehaviorPoint } from '../domain/behavior';
 import type { PointState } from '../domain/points';
-import type { Group, Student } from '../domain/roster';
+import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
 import {
   ATTENDANCE_TAB,
