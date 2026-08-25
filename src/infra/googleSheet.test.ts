@@ -20,19 +20,24 @@ class MemoryIdStore implements IdStore {
 /** Replies for a first-run create: the new id, then one write per header row. */
 const createReplies = [{ body: { spreadsheetId: 'new1' } }, ...ALL_TABS.map(() => ({ body: {} }))];
 
+const ok = { body: {} };
+const notFound = { status: 404, body: { error: 'File not found' } };
+
 const build = (stub: FetchStub, store: IdStore) =>
   new GoogleSheet(new SheetsApi(new StubTokens(), stub.fetch), store);
 
 describe('GoogleSheet first run', () => {
   it('creates the Sheet with all five tabs and writes their headers', async () => {
-    const stub = new FetchStub(createReplies);
+    const stub = new FetchStub([...createReplies, ok]);
     const store = new MemoryIdStore();
     await build(stub, store).ensureTabs();
 
     const created = stub.calls[0]?.body as { properties: { title: string }; sheets: unknown[] };
     expect(created.properties.title).toBe(SHEET_TITLE);
     expect(created.sheets).toHaveLength(ALL_TABS.length);
-    expect(stub.calls.slice(1).map((call) => call.method)).toEqual(ALL_TABS.map(() => 'PUT'));
+    expect(stub.calls.slice(1, 1 + ALL_TABS.length).map((call) => call.method)).toEqual(
+      ALL_TABS.map(() => 'PUT'),
+    );
     expect(store.get()).toBe('new1');
   });
 
@@ -52,6 +57,23 @@ describe('GoogleSheet first run', () => {
 
     expect(stub.calls).toHaveLength(1);
     expect(stub.calls[0]?.url).toContain('/kept1/values/');
+  });
+});
+
+describe('GoogleSheet when the remembered Sheet is gone', () => {
+  it('makes a fresh Sheet after a 404 and remembers the new id', async () => {
+    const stub = new FetchStub([notFound, ...createReplies, { body: { values: [] } }]);
+    const store = new MemoryIdStore('deleted1');
+
+    expect(await build(stub, store).listStudents()).toEqual([]);
+    expect(store.get()).toBe('new1');
+  });
+
+  it('does not loop when the fresh Sheet 404s too', async () => {
+    const stub = new FetchStub([notFound, ...createReplies, notFound]);
+    await expect(build(stub, new MemoryIdStore('deleted1')).listStudents()).rejects.toThrow(
+      'Sheets API 404',
+    );
   });
 });
 

@@ -1,33 +1,25 @@
-/* App entry point. For now it proves one thing end to end: sign in, create the
-   app's own Sheet (ADR 0004), and read it back. The roll-call screens come next. */
+/* App entry point: builds the gateway from configuration and starts the screens. */
+import './styles.css';
 import { GoogleTokenProvider } from '../infra/googleAuth';
 import { GoogleSheet } from '../infra/googleSheet';
 import { SheetsApi } from '../infra/sheetsApi';
+import { App } from './app';
 
-const statusLine = document.querySelector('#status');
-const connectButton = document.querySelector('#connect');
-
-function show(message: string): void {
-  if (statusLine) statusLine.textContent = message;
-}
-
+const root = document.querySelector<HTMLElement>('#app');
 const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-if (!clientId) {
-  show('No Google client ID. Run scripts/setup-google-cloud.sh, then restart the dev server.');
-} else {
-  const sheet = new GoogleSheet(new SheetsApi(new GoogleTokenProvider(clientId)));
-
-  connectButton?.addEventListener('click', () => {
-    show('Waiting for Google sign-in…');
-    void sheet
-      .ensureTabs()
-      .then(() => sheet.listStudents())
-      .then((students) => {
-        show(`Connected. The Sheet holds ${students.length} student(s).`);
-      })
-      .catch((error: unknown) => {
-        show(error instanceof Error ? error.message : 'Something went wrong.');
-      });
-  });
+if (root) {
+  if (!clientId) {
+    root.textContent =
+      'No Google client ID. Run scripts/setup-google-cloud.sh, then restart the dev server.';
+  } else {
+    const sheet = new GoogleSheet(new SheetsApi(new GoogleTokenProvider(clientId)));
+    const app = new App(root, sheet);
+    // Google's sign-in popup must come from a tap, not from page load.
+    const connect = document.querySelector('#connect');
+    connect?.addEventListener('click', () => {
+      connect.remove();
+      void app.start();
+    });
+  }
 }

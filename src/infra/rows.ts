@@ -11,22 +11,33 @@ import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { Group, Student } from '../domain/roster';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
 
-/** One tab of the Sheet, with the header row it must start with. */
+/** One tab of the Sheet, with the header row it must start with.
+    Headers are for the teacher to read: rows are decoded by column position,
+    never by header text. Renaming a header is safe; moving a column is not. */
 export interface TabSchema {
   title: string;
   header: readonly string[];
 }
 
-export const STUDENTS_TAB: TabSchema = { title: 'Students', header: ['id', 'name'] };
-export const GROUPS_TAB: TabSchema = { title: 'Groups', header: ['id', 'name', 'studentIds'] };
-export const SESSIONS_TAB: TabSchema = { title: 'Sessions', header: ['id', 'groupId', 'takenAt'] };
+export const STUDENTS_TAB: TabSchema = {
+  title: 'Students',
+  header: ['Student ID', 'Name'],
+};
+export const GROUPS_TAB: TabSchema = {
+  title: 'Groups',
+  header: ['Group ID', 'Group Name', 'Student IDs'],
+};
+export const SESSIONS_TAB: TabSchema = {
+  title: 'Sessions',
+  header: ['Session ID', 'Group ID', 'Date & Time'],
+};
 export const ATTENDANCE_TAB: TabSchema = {
   title: 'Attendance',
-  header: ['sessionId', 'studentId', 'status', 'pointState', 'note'],
+  header: ['Session ID', 'Student ID', 'Status', 'Point', 'Note'],
 };
 export const BEHAVIOR_TAB: TabSchema = {
   title: 'Behavior',
-  header: ['id', 'studentId', 'date', 'kind', 'note'],
+  header: ['Entry ID', 'Student ID', 'Date', 'Positive or Negative', 'Note'],
 };
 
 /** Every tab the app expects to exist, in creation order. */

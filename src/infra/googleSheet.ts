@@ -29,7 +29,7 @@ import {
   type SheetRow,
   type TabSchema,
 } from './rows';
-import type { SheetsApi } from './sheetsApi';
+import { SheetsApiError, type SheetsApi } from './sheetsApi';
 import type { SheetGateway } from './sheetGateway';
 
 export const SHEET_TITLE = 'Roll Call';
@@ -89,12 +89,26 @@ export class GoogleSheet implements SheetGateway {
     return id;
   }
 
+  /** Run something against the app's Sheet. A remembered id can point at a file
+      the teacher deleted from Drive; a 404 means that, so the id is dropped and
+      a fresh Sheet made rather than the app failing for good. */
+  private async withSheet<T>(run: (id: string) => Promise<T>): Promise<T> {
+    const id = await this.sheetId();
+    try {
+      return await run(id);
+    } catch (error) {
+      if (!(error instanceof SheetsApiError) || error.status !== 404) throw error;
+      this.spreadsheetId = null;
+      return run(await this.sheetId());
+    }
+  }
+
   async ensureTabs(): Promise<void> {
-    await this.sheetId();
+    await this.withSheet((id) => this.api.getValues(id, wholeTab(STUDENTS_TAB)));
   }
 
   private async read<T>(tab: TabSchema, decode: (row: SheetRow, at: number) => T): Promise<T[]> {
-    const values = await this.api.getValues(await this.sheetId(), wholeTab(tab));
+    const values = await this.withSheet((id) => this.api.getValues(id, wholeTab(tab)));
     return decodeTab(values, decode);
   }
 
@@ -119,7 +133,7 @@ export class GoogleSheet implements SheetGateway {
   }
 
   private async append(tab: TabSchema, rows: string[][]): Promise<void> {
-    await this.api.appendValues(await this.sheetId(), wholeTab(tab), rows);
+    await this.withSheet((id) => this.api.appendValues(id, wholeTab(tab), rows));
   }
 
   async appendStudent(student: Student): Promise<void> {
@@ -145,15 +159,16 @@ export class GoogleSheet implements SheetGateway {
   /** Resolve a held point by overwriting one cell. The row is found by reading
       the tab, because the Sheet, not the app, decides where a row landed. */
   async setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {
-    const id = await this.sheetId();
-    const values = await this.api.getValues(id, wholeTab(ATTENDANCE_TAB));
-    const index = values.findIndex(
-      (row, at) => at > 0 && row[0] === sessionId && row[1] === studentId,
-    );
-    if (index === -1) {
-      throw new Error(`no attendance record for ${studentId} in ${sessionId}`);
-    }
-    // pointState is column D; sheet rows are 1-based.
-    await this.api.updateValues(id, `${ATTENDANCE_TAB.title}!D${index + 1}`, [[state]]);
+    await this.withSheet(async (id) => {
+      const values = await this.api.getValues(id, wholeTab(ATTENDANCE_TAB));
+      const index = values.findIndex(
+        (row, at) => at > 0 && row[0] === sessionId && row[1] === studentId,
+      );
+      if (index === -1) {
+        throw new Error(`no attendance record for ${studentId} in ${sessionId}`);
+      }
+      // Point is column D; sheet rows are 1-based.
+      await this.api.updateValues(id, `${ATTENDANCE_TAB.title}!D${index + 1}`, [[state]]);
+    });
   }
 }

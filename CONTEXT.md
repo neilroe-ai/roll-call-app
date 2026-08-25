@@ -56,6 +56,11 @@ _Avoid_: total, tally, grade
 Short free text the teacher attaches to an Attendance Record or a Behavior
 Point, explaining the choice.
 
+**Scoreboard**:
+Every Student's name and Score, highest first, and nothing else. Shown to the
+class, so it carries no Note, Attendance Status or Point State — only the total.
+_Avoid_: leaderboard, ranking, results
+
 **Notes Log**:
 Every Note for one Student in date order. It is a view of Notes already
 attached elsewhere, never a separate place to write them.

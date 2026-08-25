@@ -34,3 +34,4 @@ Architecture decisions with lasting consequences are recorded as ADRs under
 - [0002 — Reach the Google Sheet via browser sign-in, not an Apps Script endpoint](docs/adr/0002-google-sheet-access-via-browser-oauth.md)
 - [0003 — Group is the only roster concept; there is no Class](docs/adr/0003-group-is-the-only-roster-concept.md)
 - [0004 — The app creates its own Sheet](docs/adr/0004-the-app-creates-its-own-sheet.md)
+- [0005 — No UI framework](docs/adr/0005-no-ui-framework.md)

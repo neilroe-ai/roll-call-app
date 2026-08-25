@@ -57,13 +57,16 @@ attach a short optional note when awarding or subtracting the point.
 - Phone-first for taking roll; laptop for review.
 
 ## Open decisions (to settle before/while building)
-1. **TypeScript vs plain JavaScript** for the app.
+1. ~~**TypeScript vs plain JavaScript.**~~ **Settled 2026-08-25:** TypeScript,
+   strict, enforced by `npm run check`.
 2. ~~**How the browser reaches the Google Sheet.**~~ **Settled 2026-08-25:**
    direct Sheets API with Google sign-in, scope `drive.file`. The Apps Script
    endpoint was rejected — deployed as "anyone can access" it is an
    unauthenticated public read/write handle on the Sheet, and its URL ships in
    the bundle. See `docs/adr/0002-google-sheet-access-via-browser-oauth.md`.
-3. **Framework**: vanilla JS vs a light framework.
+3. ~~**Framework**: vanilla JS vs a light framework.~~ **Settled 2026-08-26:**
+   no framework — plain TypeScript against the DOM, screen state kept as pure
+   data in `domain`. See `docs/adr/0005-no-ui-framework.md`.
 4. **Offline strategy**: how roll call taken with no signal syncs later.
 
 ## Out of scope (for now)
