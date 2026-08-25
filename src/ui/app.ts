@@ -22,6 +22,11 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
   other: 'Other',
 };
 
+/** Only a held point needs explaining, so only `sick` and `other` offer a Note. */
+function needsNote(status: AttendanceStatus): boolean {
+  return status === 'sick' || status === 'other';
+}
+
 interface Loaded {
   students: Student[];
   groups: Group[];
@@ -40,6 +45,9 @@ interface AppState {
   view: View;
   data: Loaded | null;
   rollCall: RollCall | null;
+  /** The Student whose Note field is open, if any. Only `sick` and `other`
+      open it, and only one at a time. */
+  noteFor: string | null;
   /** Set once this roll call's Attendance Records are in the Sheet, so a retry
       writes only what is still missing. */
   recordsSaved: boolean;
@@ -75,6 +83,7 @@ export class App {
     view: 'groups',
     data: null,
     rollCall: null,
+    noteFor: null,
     recordsSaved: false,
     message: null,
     busy: false,
@@ -130,6 +139,7 @@ export class App {
     };
     this.set({
       rollCall: beginRollCall(session, group, data.students),
+      noteFor: null,
       recordsSaved: false,
       view: 'rollCall',
       message: null,
@@ -149,7 +159,7 @@ export class App {
           this.state = { ...this.state, recordsSaved: progress.recordsSaved };
         },
       );
-      this.set({ rollCall: null, recordsSaved: false, view: 'groups' });
+      this.set({ rollCall: null, noteFor: null, recordsSaved: false, view: 'groups' });
       await this.reload();
       this.set({ message: { text: 'Roll call saved.', isError: false } });
     } catch (error) {
@@ -175,6 +185,10 @@ export class App {
     if (busy) {
       this.root.querySelectorAll('button').forEach((button) => (button.disabled = true));
     }
+
+    // The whole screen is redrawn on every change, so the field the teacher is
+    // typing into has to be given the caret back by hand.
+    this.root.querySelector('textarea')?.focus();
   }
 
   private renderNav(): HTMLElement {
@@ -187,7 +201,7 @@ export class App {
       const button = element('button', undefined, label);
       button.setAttribute('aria-current', String(this.state.view === view));
       button.addEventListener('click', () => {
-        this.set({ view, rollCall: null, message: null });
+        this.set({ view, rollCall: null, noteFor: null, message: null });
       });
       nav.append(button);
     }
@@ -248,12 +262,37 @@ export class App {
         button.setAttribute('aria-pressed', String(chosen === status));
         button.setAttribute('aria-label', `${student.name}: ${STATUS_LABEL[status]}`);
         button.addEventListener('click', () => {
-          this.set({ rollCall: mark(rollCall, student.id, status) });
+          // Re-tapping the same status must not silently drop a Note already
+          // written against it.
+          const previous = markOf(rollCall, student.id);
+          const note = previous?.status === status ? previous.note : undefined;
+          this.set({
+            rollCall: mark(rollCall, student.id, status, note),
+            noteFor: needsNote(status) ? student.id : null,
+          });
         });
         marks.append(button);
       }
       inner.append(marks);
       row.append(inner);
+
+      // A saved Note is otherwise invisible once the field closes, so a held
+      // point always carries a way back into it.
+      const open = this.state.noteFor === student.id;
+      if (chosen !== undefined && needsNote(chosen) && !open) {
+        const note = markOf(rollCall, student.id)?.note;
+        const edit = element('button', 'note-open', note === undefined ? 'Add note' : 'Edit note');
+        edit.setAttribute(
+          'aria-label',
+          `${note === undefined ? 'Add' : 'Edit'} note for ${student.name}`,
+        );
+        edit.addEventListener('click', () => {
+          this.set({ noteFor: student.id });
+        });
+        inner.append(edit);
+        if (note !== undefined) row.append(element('p', 'note-text', note));
+      }
+      if (open) row.append(this.renderNoteField(rollCall, student));
       list.append(row);
     }
 
@@ -270,6 +309,42 @@ export class App {
     });
 
     return [heading, progress, list, save];
+  }
+
+  /** The optional Note on a held point. Open only while the teacher is writing
+      one: dismissing leaves the Attendance Status as it is, Note or not. */
+  private renderNoteField(rollCall: RollCall, student: Student): HTMLElement {
+    const wrapper = element('div', 'note');
+    const field = element('textarea');
+    field.rows = 2;
+    field.value = markOf(rollCall, student.id)?.note ?? '';
+    field.placeholder = 'Note (optional)';
+    field.setAttribute('aria-label', `Note for ${student.name}`);
+
+    const close = (note?: string): void => {
+      const chosen = markOf(rollCall, student.id);
+      if (!chosen) return;
+      this.set({
+        rollCall: mark(rollCall, student.id, chosen.status, note),
+        noteFor: null,
+      });
+    };
+
+    const save = element('button', undefined, 'Save note');
+    save.addEventListener('click', () => {
+      const text = field.value.trim();
+      close(text === '' ? undefined : text);
+    });
+
+    const dismiss = element('button', undefined, 'Dismiss');
+    dismiss.addEventListener('click', () => {
+      close(markOf(rollCall, student.id)?.note);
+    });
+
+    const actions = element('div', 'note-actions');
+    actions.append(save, dismiss);
+    wrapper.append(field, actions);
+    return wrapper;
   }
 
   private renderScoreboard(data: Loaded): HTMLElement[] {

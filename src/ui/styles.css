@@ -181,3 +181,37 @@ li {
 .message.error {
   border-color: var(--absent);
 }
+
+.note {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.note textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  width: 100%;
+  resize: vertical;
+}
+
+.note-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.note-open {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  flex-basis: 100%;
+}
+
+.note-text {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin: 0.5rem 0 0;
+}
