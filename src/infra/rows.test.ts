@@ -15,6 +15,8 @@ import {
   decodeNotes,
   decodeStudentNotes,
   summaryBlock,
+  summaryColumnsAreOurs,
+  mergeHeader,
 } from './rows';
 
 describe('student rows', () => {
@@ -135,7 +137,7 @@ describe('the students summary columns', () => {
     studentId: 's1',
     name: 'Ana',
     score: 4,
-    tally: { present: 3, absent: 1, sick: 0, other: 2 },
+    counts: { present: 3, absent: 1, sick: 0, other: 2 },
     notes: ['2026-08-25: forgot her book', '2026-08-26: flu'],
   };
 
@@ -174,5 +176,39 @@ describe('the students summary columns', () => {
   it('leaves a row it has no summary for exactly as it found it', () => {
     const values = [STUDENTS_TAB.header, ['s9', 'Unknown', '7', '', '', '', '', 'kept']];
     expect(summaryBlock(values, [summary])).toEqual([['7', '', '', '', '', 'kept']]);
+  });
+});
+
+describe('claiming the summary columns', () => {
+  it('claims them when they are blank', () => {
+    expect(summaryColumnsAreOurs([['Student ID', 'Name']])).toBe(true);
+  });
+
+  it('claims them when they already say what the app would write', () => {
+    expect(summaryColumnsAreOurs([STUDENTS_TAB.header])).toBe(true);
+  });
+
+  it('refuses them when the teacher has their own headings there', () => {
+    expect(summaryColumnsAreOurs([['Student ID', 'Name', 'Parent phone']])).toBe(false);
+  });
+
+  it('refuses them when only one of the columns is taken', () => {
+    const header = [...STUDENTS_TAB.header];
+    header[4] = 'Class';
+    expect(summaryColumnsAreOurs([header])).toBe(false);
+  });
+
+  it('treats an empty tab as blank rather than taken', () => {
+    expect(summaryColumnsAreOurs([])).toBe(true);
+  });
+});
+
+describe('mergeHeader', () => {
+  it('fills in the headings the sheet has not got', () => {
+    expect(mergeHeader(['Student ID', 'Name'], STUDENTS_TAB)).toEqual(STUDENTS_TAB.header);
+  });
+
+  it('keeps a heading the teacher typed, even where the app wants that column', () => {
+    expect(mergeHeader(['ID', 'Full name'], STUDENTS_TAB).slice(0, 2)).toEqual(['ID', 'Full name']);
   });
 });

@@ -28,6 +28,27 @@ export const STUDENTS_TAB: TabSchema = {
 /** The Students columns the app works out and rewrites. The teacher owns
     A and B; everything from C rightwards is the app's report. */
 export const SUMMARY_COLUMNS = 'C:H';
+
+/** Where the summary columns start, and how many there are. */
+const SUMMARY_FIRST = 2;
+const SUMMARY_WIDTH = 6;
+const NOTES_INDEX = SUMMARY_FIRST + SUMMARY_WIDTH - 1;
+
+/**
+ * Whether the summary columns are the app's to write.
+ *
+ * The teacher may have had a Students tab long before these columns existed,
+ * with their own headings in C onwards. Overwriting those would destroy work
+ * the app never put there, so the app claims the columns only when they are
+ * blank or already say what it would write.
+ */
+export function summaryColumnsAreOurs(values: readonly SheetRow[]): boolean {
+  const header = values[0] ?? [];
+  return STUDENTS_TAB.header.slice(SUMMARY_FIRST).every((expected, offset) => {
+    const found = optional(header, SUMMARY_FIRST + offset);
+    return found === undefined || found === expected;
+  });
+}
 export const GROUPS_TAB: TabSchema = {
   title: 'Groups',
   header: ['Group ID', 'Group Name', 'Student IDs'],
@@ -53,6 +74,13 @@ export const ALL_TABS: readonly TabSchema[] = [
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
 ];
+
+/** The header row to write: the app's headings in the cells that are blank,
+    whatever the teacher typed in the cells that are not. A heading they wrote
+    themselves is theirs to keep, even where the app wants that column. */
+export function mergeHeader(existing: SheetRow, tab: TabSchema): string[] {
+  return tab.header.map((heading, index) => optional(existing, index) ?? heading);
+}
 
 /** A row as the Sheets API returns it: unvalidated cells, short rows possible. */
 export type SheetRow = readonly unknown[];
@@ -145,17 +173,15 @@ export function decodeStudentNotes(values: readonly SheetRow[]): Map<string, str
   return notes;
 }
 
-const NOTES_INDEX = 7;
-
 /** The worked-out columns of one Students row, in tab order. Column A and B
     are left alone: the teacher typed those. */
 export function encodeSummary(summary: StudentSummary): string[] {
   return [
     String(summary.score),
-    String(summary.tally.present),
-    String(summary.tally.absent),
-    String(summary.tally.sick),
-    String(summary.tally.other),
+    String(summary.counts.present),
+    String(summary.counts.absent),
+    String(summary.counts.sick),
+    String(summary.counts.other),
     encodeNotes(summary.notes),
   ];
 }
@@ -171,7 +197,9 @@ export function summaryBlock(
     const id = optional(row, 0);
     const summary = id === undefined ? undefined : byId.get(id);
     return summary === undefined
-      ? [...row.slice(2, 8)].map((cell) => (typeof cell === 'string' ? cell : ''))
+      ? [...row.slice(SUMMARY_FIRST, NOTES_INDEX + 1)].map((cell) =>
+          typeof cell === 'string' ? cell : '',
+        )
       : encodeSummary(summary);
   });
 }

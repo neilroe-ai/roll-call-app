@@ -23,6 +23,7 @@ import {
   decodeStudent,
   decodeStudentNotes,
   decodeTab,
+  mergeHeader,
   encodeAttendance,
   encodeBehavior,
   encodeGroup,
@@ -31,12 +32,27 @@ import {
   findAttendanceRow,
   POINT_COLUMN,
   summaryBlock,
+  summaryColumnsAreOurs,
   SUMMARY_COLUMNS,
   type SheetRow,
   type TabSchema,
 } from './rows';
 import { SheetsApiError, type SheetsApi } from './sheetsApi';
 import type { SheetGateway } from './sheetGateway';
+
+/** Raised when the Students tab already has the teacher's own columns where
+    the summary goes. Writing there would destroy work the app never made, so
+    it refuses and says so instead. */
+export class SummaryColumnsTakenError extends Error {
+  constructor() {
+    super(
+      `Your Students tab has its own columns in ${SUMMARY_COLUMNS}. ` +
+        'The roll call was saved, but the score, counts and notes were not written there. ' +
+        'Move those columns to the right of the Notes column to let the app fill them in.',
+    );
+    this.name = 'SummaryColumnsTakenError';
+  }
+}
 
 export const SHEET_TITLE = 'Roll Call';
 export const SHEET_ID_KEY = 'rollcall.spreadsheetId';
@@ -109,12 +125,15 @@ export class GoogleSheet implements SheetGateway {
     }
   }
 
-  /** Make sure the headers on screen match the columns the app writes. A Sheet
-      made before the summary columns existed gains them here. */
+  /** Name the columns the app writes. A Sheet made before the summary columns
+      existed gains their headings here — but only in cells that are blank, so
+      a heading the teacher typed is never overwritten. */
   async ensureTabs(): Promise<void> {
     await this.withSheet(async (id) => {
       for (const tab of ALL_TABS) {
-        await this.api.updateValues(id, `${tab.title}!A1`, [[...tab.header]]);
+        const values = await this.api.getValues(id, wholeTab(tab));
+        const merged = mergeHeader(values[0] ?? [], tab);
+        await this.api.updateValues(id, `${tab.title}!A1`, [merged]);
       }
     });
   }
@@ -180,6 +199,7 @@ export class GoogleSheet implements SheetGateway {
   async saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
     await this.withSheet(async (id) => {
       const values = await this.api.getValues(id, wholeTab(STUDENTS_TAB));
+      if (!summaryColumnsAreOurs(values)) throw new SummaryColumnsTakenError();
       const block = summaryBlock(values, summaries);
       if (block.length === 0) return;
       const [first, last] = SUMMARY_COLUMNS.split(':');

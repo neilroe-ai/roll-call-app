@@ -21,6 +21,9 @@ class MemoryIdStore implements IdStore {
 const createReplies = [{ body: { spreadsheetId: 'new1' } }, ...ALL_TABS.map(() => ({ body: {} }))];
 
 const ok = { body: {} };
+
+/** Attendance counts for a student marked present once. */
+const OUR_COUNTS = { present: 1, absent: 0, sick: 0, other: 0 };
 const notFound = { status: 404, body: { error: 'File not found' } };
 
 const build = (stub: FetchStub, store: IdStore) =>
@@ -134,5 +137,32 @@ describe('GoogleSheet reads and writes', () => {
     await expect(
       build(stub, new MemoryIdStore('kept1')).setPointState('sess1', 's9', 'awarded'),
     ).rejects.toThrow('no attendance record for s9 in sess1');
+  });
+});
+
+describe('the summary columns', () => {
+  const studentsTab = (header: string[]) => ({
+    body: { values: [header, ['s1', 'Ana']] },
+  });
+  const summary = [
+    { studentId: 's1', name: 'Ana', score: 2, counts: OUR_COUNTS, notes: ['2026-08-26: flu'] },
+  ];
+
+  it('writes them when the tab leaves them free', async () => {
+    const stub = new FetchStub([studentsTab(['Student ID', 'Name']), ok]);
+    await build(stub, new MemoryIdStore('sheet1')).saveStudentSummaries(summary);
+
+    const write = stub.calls[1];
+    expect(write?.method).toBe('PUT');
+    expect(write?.body).toMatchObject({ values: [['2', '1', '0', '0', '0', '2026-08-26: flu']] });
+  });
+
+  it('refuses to overwrite columns the teacher is already using', async () => {
+    const stub = new FetchStub([studentsTab(['Student ID', 'Name', 'Parent phone'])]);
+    const sheet = build(stub, new MemoryIdStore('sheet1'));
+
+    await expect(sheet.saveStudentSummaries(summary)).rejects.toThrow(/its own columns in C:H/);
+    // Read only: nothing was written over the teacher's column.
+    expect(stub.calls.map((call) => call.method)).toEqual(['GET']);
   });
 });
