@@ -1,18 +1,31 @@
-import type { AttendanceStatus, PointState } from '../domain/points';
+/**
+ * The port to the Google Sheet that backs the app.
+ *
+ * Speaks in domain records, not rows: the row shape is an infra detail owned by
+ * `rows.ts`. Every method can fail — no network, expired token, a tab the
+ * teacher renamed — so callers must handle rejection. Per ADR 0002 a failed
+ * write must never block taking roll.
+ */
+import type { BehaviorPoint } from '../domain/behavior';
+import type { PointState } from '../domain/points';
+import type { Group, Student } from '../domain/roster';
+import type { AttendanceRecord, Session } from '../domain/session';
 
-/** One attendance row as stored in the Google Sheet. */
-export interface AttendanceRow {
-  studentId: string;
-  sessionId: string;
-  status: AttendanceStatus;
-  /** Stored, not derived: a held point is resolved by the teacher, so the
-      current state cannot be recomputed from the status alone. */
-  pointState: PointState;
-  note?: string;
-}
-
-/** Port for the Google Sheet that backs the app. Implemented in a later step. */
 export interface SheetGateway {
-  appendAttendance(row: AttendanceRow): Promise<void>;
-  listAttendance(sessionId: string): Promise<AttendanceRow[]>;
+  /** Create any missing tabs and header rows. Safe to call repeatedly. */
+  ensureTabs(): Promise<void>;
+
+  listStudents(): Promise<Student[]>;
+  listGroups(): Promise<Group[]>;
+  listSessions(): Promise<Session[]>;
+  listAttendance(): Promise<AttendanceRecord[]>;
+  listBehavior(): Promise<BehaviorPoint[]>;
+
+  appendSession(session: Session): Promise<void>;
+  /** Appended as one batch: a Session's records are written together. */
+  appendAttendance(records: readonly AttendanceRecord[]): Promise<void>;
+  appendBehavior(point: BehaviorPoint): Promise<void>;
+
+  /** Resolve a held point later. Throws if no such record exists. */
+  setPointState(sessionId: string, studentId: string, state: PointState): Promise<void>;
 }
