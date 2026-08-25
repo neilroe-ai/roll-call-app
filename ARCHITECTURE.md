@@ -28,6 +28,8 @@ of truth for the rule. If it fails, fix the import, never edit the contract.
 ## Decisions
 
 Architecture decisions with lasting consequences are recorded as ADRs under
-`docs/adr/` (created when the first one is written). This section indexes them.
+`docs/adr/`. This section indexes them.
 
-- _none yet_
+- [0001 — No secrets in client code](docs/adr/0001-no-secrets-in-client-code.md)
+- [0002 — Reach the Google Sheet via browser sign-in, not an Apps Script endpoint](docs/adr/0002-google-sheet-access-via-browser-oauth.md)
+- [0003 — Group is the only roster concept; there is no Class](docs/adr/0003-group-is-the-only-roster-concept.md)
