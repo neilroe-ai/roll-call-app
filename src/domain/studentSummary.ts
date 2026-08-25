@@ -8,41 +8,57 @@
  * Notes go on the end.
  */
 import type { CalendarDate } from './behavior';
-import type { Student } from './group';
+import { isMember, type Group, type Student } from './group';
 import { STATUSES, type AttendanceStatus } from './points';
 import { scoreFor, type PointsLedger } from './score';
+import type { Session } from './session';
 
-/** How many Sessions a Student took each Attendance Status in. */
-export type AttendanceTally = Record<AttendanceStatus, number>;
+/** A Student's Attendance Counts: how many Sessions they took each Attendance
+    Status in. */
+export type AttendanceCounts = Record<AttendanceStatus, number>;
 
 export interface StudentSummary {
   studentId: string;
   name: string;
   score: number;
-  tally: AttendanceTally;
+  counts: AttendanceCounts;
   /** The whole Notes Log, oldest first — what the Students tab should hold
       after this save, not just what was added. */
   notes: string[];
 }
 
-/** How many Sessions a Student took each status in. */
-export function tallyFor(studentId: string, ledger: PointsLedger): AttendanceTally {
-  const tally = Object.fromEntries(STATUSES.map((status) => [status, 0])) as AttendanceTally;
+/** One Student's Attendance Counts, worked out from the Ledger. */
+export function countsFor(studentId: string, ledger: PointsLedger): AttendanceCounts {
+  const counts = Object.fromEntries(STATUSES.map((status) => [status, 0])) as AttendanceCounts;
   for (const record of ledger.attendance) {
-    if (record.studentId === studentId) tally[record.status] += 1;
+    if (record.studentId === studentId) counts[record.status] += 1;
   }
-  return tally;
+  return counts;
 }
 
-/** How many Sessions a Student was counted in. The four Attendance Statuses
-    are exhaustive, so their total is the Student's own denominator: a Student
-    who joined the Group late is not marked down for Sessions before that. */
-export function sessionsCounted(tally: AttendanceTally): number {
-  return STATUSES.reduce((total, status) => total + tally[status], 0);
+/**
+ * How many Sessions a Student could have been at: every Session taken for a
+ * Group they belong to.
+ *
+ * This is the denominator behind the percentages, and it counts Sessions the
+ * Student has no Attendance Record for — a Session they were missed in still
+ * happened, and hiding it would read as a perfect record. Group membership is
+ * as it stands today, so adding a Student to a Group counts them into that
+ * Group's past Sessions.
+ */
+export function sessionsFor(
+  studentId: string,
+  groups: readonly Group[],
+  sessions: readonly Session[],
+): number {
+  const theirs = new Set(
+    groups.filter((group) => isMember(group, studentId)).map((group) => group.id),
+  );
+  return sessions.filter((session) => theirs.has(session.groupId)).length;
 }
 
-/** A Student's share of their own Sessions, rounded to a whole percent. No
-    Sessions counted is 0%, not a division by zero. */
+/** A count as a share of the Sessions it is out of, to a whole percent. No
+    Sessions is 0%, not a division by zero. */
 export function shareOf(count: number, sessions: number): number {
   return sessions === 0 ? 0 : Math.round((count / sessions) * 100);
 }
@@ -84,7 +100,7 @@ export function summarize(
       studentId: student.id,
       name: student.name,
       score: scoreFor(student.id, ledger),
-      tally: tallyFor(student.id, ledger),
+      counts: countsFor(student.id, ledger),
       notes,
     };
   });

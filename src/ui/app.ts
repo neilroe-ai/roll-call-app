@@ -6,9 +6,19 @@
  * All decisions live in `domain`; this file only renders and turns taps into
  * calls.
  */
-import { STATUSES, type AttendanceStatus } from '../domain/points';
-import { awardBehavior, behaviorNote, calendarDateOf, signOf } from '../domain/behavior';
-import { BEHAVIOR_KINDS, type BehaviorKind } from '../domain/points';
+import {
+  BEHAVIOR_KINDS,
+  STATUSES,
+  type AttendanceStatus,
+  type BehaviorKind,
+} from '../domain/points';
+import {
+  awardBehavior,
+  behaviorNote,
+  calendarDateOf,
+  signOf,
+  type CalendarDate,
+} from '../domain/behavior';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
 import type { PointsLedger } from '../domain/score';
@@ -23,7 +33,7 @@ import {
   type RollCall,
 } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
-import { sessionsCounted, shareOf, summarize, type StudentSummary } from '../domain/studentSummary';
+import { sessionsFor, shareOf, summarize, type StudentSummary } from '../domain/studentSummary';
 import { saveRollCall } from './saveRollCall';
 import type { SheetGateway } from '../infra/sheetGateway';
 
@@ -37,6 +47,7 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
 interface Loaded {
   students: Student[];
   groups: Group[];
+  sessions: Session[];
   ledger: PointsLedger;
   /** Each Student's Notes Log as the Sheet holds it. */
   notes: Map<string, string[]>;
@@ -56,6 +67,19 @@ interface Message {
   isError: boolean;
 }
 
+/** The words and the wiring of one text box. */
+interface TextBox {
+  current?: string;
+  label: string;
+  placeholder: string;
+  save: string;
+  dismiss: string;
+  /** Whether Save is the loud button on the row. */
+  emphasis?: 'primary';
+  onSave: (text: string) => void;
+  onDismiss: () => void;
+}
+
 /** Everything on screen, in one place. */
 interface AppState {
   view: View;
@@ -64,7 +88,7 @@ interface AppState {
   /** The Student whose Note field is open, if any. Only one at a time. */
   noteFor: string | null;
   /** The Behavior Point being written, if any. */
-  pending: PendingBehavior | null;
+  pendingBehavior: PendingBehavior | null;
   /** Whether the Summary shows each count as a share of that Student's own
       Sessions instead of a number of days. */
   asShare: boolean;
@@ -108,7 +132,7 @@ export class App {
     data: null,
     rollCall: null,
     noteFor: null,
-    pending: null,
+    pendingBehavior: null,
     asShare: false,
     recordsSaved: false,
     message: null,
@@ -120,6 +144,11 @@ export class App {
     private readonly sheet: SheetGateway,
     private readonly clock: Clock = systemClock,
   ) {}
+
+  /** The date where the teacher is standing. */
+  private today(): CalendarDate {
+    return calendarDateOf(this.clock.now());
+  }
 
   /** Sign in, read the Sheet, show the Groups. */
   async start(): Promise<void> {
@@ -139,15 +168,16 @@ export class App {
 
   private async reload(): Promise<void> {
     try {
-      const [students, groups, attendance, behavior, notes] = await Promise.all([
+      const [students, groups, sessions, attendance, behavior, notes] = await Promise.all([
         this.sheet.listStudents(),
         this.sheet.listGroups(),
+        this.sheet.listSessions(),
         this.sheet.listAttendance(),
         this.sheet.listBehavior(),
         this.sheet.listStudentNotes(),
       ]);
       this.set({
-        data: { students, groups, ledger: { attendance, behavior }, notes },
+        data: { students, groups, sessions, ledger: { attendance, behavior }, notes },
         message: null,
         busy: false,
       });
@@ -183,9 +213,8 @@ export class App {
       attendance: [...data.ledger.attendance, ...recordsToSave(rollCall)],
       behavior: data.ledger.behavior,
     };
-    const today = calendarDateOf(this.clock.now());
     return summarize(data.students, ledger, data.notes, {
-      on: today,
+      on: this.today(),
       byStudent: rollCall.notes,
     });
   }
@@ -197,10 +226,10 @@ export class App {
   private async saveBehavior(student: Student, kind: BehaviorKind, text: string): Promise<void> {
     const data = this.state.data;
     if (!data) return;
-    const today = calendarDateOf(this.clock.now());
+    const today = this.today();
     const point = awardBehavior(this.clock.newId(), student.id, today, kind, text);
 
-    this.set({ pending: null, busy: true, message: { text: 'Saving…', isError: false } });
+    this.set({ pendingBehavior: null, busy: true, message: { text: 'Saving…', isError: false } });
     try {
       await this.sheet.appendBehavior(point);
       const ledger: PointsLedger = {
@@ -235,7 +264,7 @@ export class App {
     try {
       await this.sheet.saveStudentSummaries(
         summarize(data.students, data.ledger, data.notes, {
-          on: calendarDateOf(this.clock.now()),
+          on: this.today(),
           byStudent: new Map([[student.id, text]]),
         }),
       );
@@ -308,7 +337,16 @@ export class App {
       const button = element('button', undefined, label);
       button.setAttribute('aria-current', String(this.state.view === view));
       button.addEventListener('click', () => {
-        this.set({ view, rollCall: null, noteFor: null, pending: null, message: null });
+        // A roll call in progress survives a trip to another tab: its marks and
+        // Notes are only in memory, and losing them to a stray tap would lose
+        // work the teacher cannot get back. "Take roll" returns to it.
+        const returning = view === 'groups' && this.state.rollCall !== null;
+        this.set({
+          view: returning ? 'rollCall' : view,
+          noteFor: null,
+          pendingBehavior: null,
+          message: null,
+        });
       });
       nav.append(button);
     }
@@ -407,6 +445,12 @@ export class App {
       'primary',
       left === 0 ? 'Save roll call' : `Save roll call (${String(left)} not marked)`,
     );
+
+    // The only way out that throws the roll call away, so it says so.
+    const discard = element('button', undefined, 'Discard and pick another group');
+    discard.addEventListener('click', () => {
+      this.set({ rollCall: null, noteFor: null, view: 'groups', message: null });
+    });
     // A roll call carrying only a Note is still worth saving: the teacher
     // wrote something about a Student, and it must not be thrown away.
     save.disabled = rollCall.marks.size === 0 && rollCall.notes.size === 0;
@@ -414,7 +458,7 @@ export class App {
       void this.save();
     });
 
-    return [heading, progress, list, save];
+    return [heading, progress, list, save, discard];
   }
 
   /** The way into the Note field. The label is passed in because the two
@@ -429,6 +473,33 @@ export class App {
     return button;
   }
 
+  /**
+   * A box to type free text in, with a button that keeps it and one that walks
+   * away. Both the Note field and the reason for a Behavior Point are this,
+   * differing only in their words and in what Save does.
+   */
+  private renderTextBox(box: TextBox): HTMLElement {
+    const wrapper = element('div', 'note');
+    const field = element('textarea');
+    field.rows = 2;
+    field.value = box.current ?? '';
+    field.placeholder = box.placeholder;
+    field.setAttribute('aria-label', box.label);
+
+    const save = element('button', box.emphasis === 'primary' ? 'primary' : undefined, box.save);
+    save.addEventListener('click', () => {
+      box.onSave(field.value);
+    });
+
+    const dismiss = element('button', undefined, box.dismiss);
+    dismiss.addEventListener('click', box.onDismiss);
+
+    const actions = element('div', 'note-actions');
+    actions.append(save, dismiss);
+    wrapper.append(field, actions);
+    return wrapper;
+  }
+
   /** The Note field. Optional throughout: dismissing leaves the Note and
       anything else on the row exactly as they were. */
   private renderNoteField(
@@ -436,27 +507,17 @@ export class App {
     current: string,
     onSave: (text: string) => void,
   ): HTMLElement {
-    const wrapper = element('div', 'note');
-    const field = element('textarea');
-    field.rows = 2;
-    field.value = current;
-    field.placeholder = 'Note (optional)';
-    field.setAttribute('aria-label', `Note for ${student.name}`);
-
-    const save = element('button', undefined, 'Save note');
-    save.addEventListener('click', () => {
-      onSave(field.value);
+    return this.renderTextBox({
+      current,
+      label: `Note for ${student.name}`,
+      placeholder: 'Note (optional)',
+      save: 'Save note',
+      dismiss: 'Dismiss',
+      onSave,
+      onDismiss: () => {
+        this.set({ noteFor: null });
+      },
     });
-
-    const dismiss = element('button', undefined, 'Dismiss');
-    dismiss.addEventListener('click', () => {
-      this.set({ noteFor: null });
-    });
-
-    const actions = element('div', 'note-actions');
-    actions.append(save, dismiss);
-    wrapper.append(field, actions);
-    return wrapper;
   }
 
   /** Every Student's Score and how their Attendance Statuses fell out — the
@@ -472,11 +533,15 @@ export class App {
     toggle.addEventListener('click', () => {
       this.set({ asShare: !asShare });
     });
-    const controls = element('p', 'muted');
+    const controls = element('div', 'controls');
     controls.append(
-      asShare
-        ? 'Each status as a share of that student\u2019s own sessions. '
-        : 'Sessions counted for each status. ',
+      element(
+        'p',
+        'muted',
+        asShare
+          ? 'Each status as a share of every session taken for their group.'
+          : 'Sessions counted for each status.',
+      ),
       toggle,
     );
 
@@ -488,13 +553,13 @@ export class App {
     table.append(head);
 
     for (const summary of summaries) {
-      const sessions = sessionsCounted(summary.tally);
+      const sessions = sessionsFor(summary.studentId, data.groups, data.sessions);
       const row = element('tr');
       row.append(element('th', 'name', summary.name));
       // The Score is a running total, never a share of anything.
       row.append(element('td', undefined, String(summary.score)));
       for (const status of STATUSES) {
-        const count = summary.tally[status];
+        const count = summary.counts[status];
         const text = asShare ? `${String(shareOf(count, sessions))}%` : String(count);
         row.append(element('td', undefined, text));
       }
@@ -516,7 +581,8 @@ export class App {
       const top = element('div', 'roll-row');
       top.append(element('span', 'name', student.name));
 
-      const pending = this.state.pending?.studentId === student.id ? this.state.pending : null;
+      const pending =
+        this.state.pendingBehavior?.studentId === student.id ? this.state.pendingBehavior : null;
       const buttons = element('div', 'marks');
       for (const kind of BEHAVIOR_KINDS) {
         const button = element('button', undefined, signOf(kind));
@@ -524,7 +590,7 @@ export class App {
         button.setAttribute('aria-pressed', String(pending?.kind === kind));
         button.setAttribute('aria-label', `${signOf(kind)} for ${student.name}`);
         button.addEventListener('click', () => {
-          this.set({ pending: { studentId: student.id, kind } });
+          this.set({ pendingBehavior: { studentId: student.id, kind } });
         });
         buttons.append(button);
       }
@@ -540,26 +606,19 @@ export class App {
   /** The reason for a Behavior Point, and the button that commits it. Nothing
       is written until Save, so a mis-tap costs a tap on Cancel. */
   private renderBehaviorNote(student: Student, kind: BehaviorKind): HTMLElement {
-    const wrapper = element('div', 'note');
-    const field = element('textarea');
-    field.rows = 2;
-    field.placeholder = 'Why? (optional)';
-    field.setAttribute('aria-label', `Why ${signOf(kind)} for ${student.name}`);
-
-    const save = element('button', 'primary', `Save ${signOf(kind)}`);
-    save.addEventListener('click', () => {
-      void this.saveBehavior(student, kind, field.value);
+    return this.renderTextBox({
+      label: `Why ${signOf(kind)} for ${student.name}`,
+      placeholder: 'Why? (optional)',
+      save: `Save ${signOf(kind)}`,
+      emphasis: 'primary',
+      dismiss: 'Cancel',
+      onSave: (text) => {
+        void this.saveBehavior(student, kind, text);
+      },
+      onDismiss: () => {
+        this.set({ pendingBehavior: null });
+      },
     });
-
-    const cancel = element('button', undefined, 'Cancel');
-    cancel.addEventListener('click', () => {
-      this.set({ pending: null });
-    });
-
-    const actions = element('div', 'note-actions');
-    actions.append(save, cancel);
-    wrapper.append(field, actions);
-    return wrapper;
   }
 
   /** Every Student's Notes Log, and a way to add to any of them. This is where

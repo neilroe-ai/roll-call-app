@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { noteEntry, sessionsCounted, shareOf, summarize, tallyFor } from './studentSummary';
-import type { Student } from './group';
+import { noteEntry, sessionsFor, shareOf, summarize, countsFor } from './studentSummary';
+import type { Group, Student } from './group';
 import type { PointsLedger } from './score';
-import type { AttendanceRecord } from './session';
+import type { AttendanceRecord, Session } from './session';
 import type { BehaviorPoint } from './behavior';
 
 const students: Student[] = [
@@ -27,14 +27,14 @@ const ledger: PointsLedger = {
   behavior: [{ id: 'b1', studentId: 's1', date: '2026-08-25', kind: 'positive' } as BehaviorPoint],
 };
 
-describe('tallyFor', () => {
+describe('countsFor', () => {
   it('counts the sessions a student took each status in', () => {
-    expect(tallyFor('s1', ledger)).toEqual({ present: 2, absent: 0, sick: 1, other: 0 });
-    expect(tallyFor('s2', ledger)).toEqual({ present: 0, absent: 1, sick: 0, other: 1 });
+    expect(countsFor('s1', ledger)).toEqual({ present: 2, absent: 0, sick: 1, other: 0 });
+    expect(countsFor('s2', ledger)).toEqual({ present: 0, absent: 1, sick: 0, other: 1 });
   });
 
   it('is all zeros for a student with no records', () => {
-    expect(tallyFor('s9', ledger)).toEqual({ present: 0, absent: 0, sick: 0, other: 0 });
+    expect(countsFor('s9', ledger)).toEqual({ present: 0, absent: 0, sick: 0, other: 0 });
   });
 });
 
@@ -89,20 +89,40 @@ describe('summarize', () => {
   });
 });
 
-describe('sessionsCounted and shareOf', () => {
-  it('counts every session the student was given a status in', () => {
-    expect(sessionsCounted(tallyFor('s1', ledger))).toBe(3);
+describe('sessionsFor', () => {
+  const groups: Group[] = [
+    { id: 'g1', name: '3A', studentIds: ['s1', 's2'] },
+    { id: 'g2', name: 'reading circle', studentIds: ['s1'] },
+  ];
+  const sessions: Session[] = [
+    { id: 'x1', groupId: 'g1', takenAt: '2026-08-24T09:00:00+08:00' },
+    { id: 'x2', groupId: 'g1', takenAt: '2026-08-25T09:00:00+08:00' },
+    { id: 'x3', groupId: 'g2', takenAt: '2026-08-25T14:00:00+08:00' },
+  ];
+
+  it('counts every session taken for a group the student belongs to', () => {
+    expect(sessionsFor('s1', groups, sessions)).toBe(3);
+    expect(sessionsFor('s2', groups, sessions)).toBe(2);
   });
 
-  it('works out the share of that student own sessions', () => {
-    const tally = tallyFor('s1', ledger);
-    const sessions = sessionsCounted(tally);
-    expect(shareOf(tally.present, sessions)).toBe(67);
-    expect(shareOf(tally.sick, sessions)).toBe(33);
+  it('counts a session the student has no record for, not just the ones they were marked in', () => {
+    // s2 was marked in one session out of the two their group took.
+    const marked = 1;
+    expect(shareOf(marked, sessionsFor('s2', groups, sessions))).toBe(50);
   });
 
-  it('is 0% for a student with no sessions rather than a division by zero', () => {
-    expect(sessionsCounted(tallyFor('s9', ledger))).toBe(0);
+  it('is nothing for a student in no group', () => {
+    expect(sessionsFor('s9', groups, sessions)).toBe(0);
+  });
+});
+
+describe('shareOf', () => {
+  it('rounds to a whole percent', () => {
+    expect(shareOf(2, 3)).toBe(67);
+    expect(shareOf(1, 3)).toBe(33);
+  });
+
+  it('is 0% with no sessions rather than a division by zero', () => {
     expect(shareOf(0, 0)).toBe(0);
   });
 });

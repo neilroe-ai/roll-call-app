@@ -6,9 +6,9 @@
  * Marks are held here until the teacher saves. Changing a mark before saving is
  * ordinary — the teacher taps the wrong row, or a Student walks in late.
  *
- * Notes are kept apart from marks so one can be written before the other. A
- * Note only reaches the Sheet on a marked Student: it belongs to an Attendance
- * Record, and an unmarked Student has none.
+ * Notes are kept apart from marks so one can be written before the other, and
+ * a Note survives a change of status: it explains the Student, not the tap. A
+ * Note on an unmarked Student is saved too, to that Student's Notes Log.
  */
 import type { AttendanceStatus } from './points';
 import { membersOf, type Group, type Student } from './group';

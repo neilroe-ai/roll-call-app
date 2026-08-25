@@ -76,7 +76,13 @@ bottom. A Note is only ever added to it.
 
 **Student Summary**:
 What the Students tab says about one Student besides their name: their Score
-and how many Sessions they took each Attendance Status in. Every figure is
-worked out from the Points Ledger, so the app rewrites the whole summary on
-each save. Nothing reads a total back out of it.
+and their Attendance Counts. Every figure is worked out from the Points Ledger,
+so the app rewrites the whole summary on each save. Nothing reads a total back
+out of it.
 _Avoid_: stats, report card
+
+**Attendance Counts**:
+How many Sessions one Student took each Attendance Status in — four numbers,
+one per Status. Shown either as those numbers or as each one's share of the
+Sessions the Student was counted in.
+_Avoid_: tally, stats, attendance rate

@@ -301,3 +301,33 @@ test('the save button stays disabled while nothing is marked or noted', () => {
   );
   expect(save?.disabled).toBe(true);
 });
+
+test('a roll call in progress survives a trip to another tab', async () => {
+  markButton('Amy', 'Sick').click();
+  const field = noteField();
+  if (!field) throw new Error('expected a note field');
+  field.value = 'Flu';
+  button('Save note').click();
+  markButton('Ben', 'Here').click();
+
+  button('Behavior').click();
+  button('Take roll').click();
+
+  // Back on the same roll call, not the group list.
+  expect(root.querySelector('h1')?.textContent).toBe('Marking the roll');
+  expect(root.querySelector('.note-text')?.textContent).toBe('Flu');
+  expect(markButton('Ben', 'Here').getAttribute('aria-pressed')).toBe('true');
+
+  await saveRoll();
+  expect(await savedNote('s1')).toBe('Flu');
+});
+
+test('discarding is the one way out that throws the roll call away', () => {
+  markButton('Amy', 'Sick').click();
+  button('Dismiss').click();
+  button('Discard and pick another group').click();
+
+  expect(root.querySelector('h1')?.textContent).toBe('Take roll');
+  button('3A — 2 students').click();
+  expect(markButton('Amy', 'Sick').getAttribute('aria-pressed')).toBe('false');
+});

@@ -283,3 +283,15 @@ table.summary tr:first-child th {
 .note .primary {
   width: auto;
 }
+
+.controls {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.controls .muted {
+  margin: 0;
+}
