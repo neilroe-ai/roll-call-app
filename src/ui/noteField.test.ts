@@ -278,3 +278,26 @@ test('only one note field is open at a time', () => {
   expect(root.querySelectorAll('textarea')).toHaveLength(1);
   expect(noteField()?.getAttribute('aria-label')).toBe('Note for Ben');
 });
+
+test('a roll call carrying only a note can still be saved', async () => {
+  button('Add note').click();
+  const field = noteField();
+  if (!field) throw new Error('expected a note field');
+  field.value = 'Away all week, family in Hualien';
+  button('Save note').click();
+
+  const save = [...root.querySelectorAll('button')].find((candidate) =>
+    candidate.textContent?.startsWith('Save roll call'),
+  );
+  expect(save?.disabled).toBe(false);
+
+  await saveRoll();
+  expect(await savedLog('s1')).toEqual(['2026-08-26: Away all week, family in Hualien']);
+});
+
+test('the save button stays disabled while nothing is marked or noted', () => {
+  const save = [...root.querySelectorAll('button')].find((candidate) =>
+    candidate.textContent?.startsWith('Save roll call'),
+  );
+  expect(save?.disabled).toBe(true);
+});

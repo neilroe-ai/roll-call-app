@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noteEntry, summarize, tallyFor } from './studentSummary';
+import { noteEntry, sessionsCounted, shareOf, summarize, tallyFor } from './studentSummary';
 import type { Student } from './group';
 import type { PointsLedger } from './score';
 import type { AttendanceRecord } from './session';
@@ -86,5 +86,23 @@ describe('summarize', () => {
 
   it('names every student, so the tab is rewritten row for row', () => {
     expect(summarize(students, ledger, new Map()).map((row) => row.name)).toEqual(['Ana', 'Ben']);
+  });
+});
+
+describe('sessionsCounted and shareOf', () => {
+  it('counts every session the student was given a status in', () => {
+    expect(sessionsCounted(tallyFor('s1', ledger))).toBe(3);
+  });
+
+  it('works out the share of that student own sessions', () => {
+    const tally = tallyFor('s1', ledger);
+    const sessions = sessionsCounted(tally);
+    expect(shareOf(tally.present, sessions)).toBe(67);
+    expect(shareOf(tally.sick, sessions)).toBe(33);
+  });
+
+  it('is 0% for a student with no sessions rather than a division by zero', () => {
+    expect(sessionsCounted(tallyFor('s9', ledger))).toBe(0);
+    expect(shareOf(0, 0)).toBe(0);
   });
 });

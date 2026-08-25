@@ -34,6 +34,19 @@ export function tallyFor(studentId: string, ledger: PointsLedger): AttendanceTal
   return tally;
 }
 
+/** How many Sessions a Student was counted in. The four Attendance Statuses
+    are exhaustive, so their total is the Student's own denominator: a Student
+    who joined the Group late is not marked down for Sessions before that. */
+export function sessionsCounted(tally: AttendanceTally): number {
+  return STATUSES.reduce((total, status) => total + tally[status], 0);
+}
+
+/** A Student's share of their own Sessions, rounded to a whole percent. No
+    Sessions counted is 0%, not a division by zero. */
+export function shareOf(count: number, sessions: number): number {
+  return sessions === 0 ? 0 : Math.round((count / sessions) * 100);
+}
+
 /** One line of a Notes Log: the date, then what the teacher wrote. Dated so a
     list of them stays readable once it is several lessons long. */
 export function noteEntry(date: CalendarDate, note: string): string {

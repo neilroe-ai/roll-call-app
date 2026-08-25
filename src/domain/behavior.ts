@@ -1,4 +1,4 @@
-import type { BehaviorKind } from './points';
+import { behaviorPoints, type BehaviorKind } from './points';
 
 /** A calendar date, `YYYY-MM-DD`. Behavior points belong to a date, not a Session. */
 export type CalendarDate = string;
@@ -19,4 +19,29 @@ export interface BehaviorPoint {
   date: CalendarDate;
   kind: BehaviorKind;
   note?: string;
+}
+
+/** Award or subtract a Behavior Point. It is immediate and final: there is no
+    held state to resolve later, so what is written here counts at once. */
+export function awardBehavior(
+  id: string,
+  studentId: string,
+  date: CalendarDate,
+  kind: BehaviorKind,
+  note?: string,
+): BehaviorPoint {
+  const point: BehaviorPoint = { id, studentId, date, kind };
+  return note === undefined || note.trim() === '' ? point : { ...point, note: note.trim() };
+}
+
+/** How a Behavior Point reads with a sign in front, e.g. `+1`. */
+export function signOf(kind: BehaviorKind): string {
+  const points = behaviorPoints(kind);
+  return points > 0 ? `+${String(points)}` : String(points);
+}
+
+/** A Behavior Point's line in a Notes Log. The sign goes first, so a log read
+    down the cell shows what the Note was explaining. */
+export function behaviorNote(kind: BehaviorKind, note: string): string {
+  return `${signOf(kind)} ${note.trim()}`;
 }

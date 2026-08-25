@@ -62,8 +62,14 @@ h2 {
 
 nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
+}
+
+nav button {
+  flex: 1 1 auto;
+  padding: 0.5rem 0.6rem;
 }
 
 button {
@@ -264,4 +270,16 @@ table.summary tr:first-child th {
   padding: 0 0 0 0.6rem;
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+.marks button[aria-pressed='true'][data-kind='positive'] {
+  background: var(--present);
+}
+
+.marks button[aria-pressed='true'][data-kind='negative'] {
+  background: var(--absent);
+}
+
+.note .primary {
+  width: auto;
 }
