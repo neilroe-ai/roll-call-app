@@ -4,6 +4,7 @@ import {
   decodeAttendance,
   decodeBehavior,
   decodeGroup,
+  decodeSession,
   decodeStudent,
   decodeTab,
   encodeAttendance,
@@ -104,5 +105,23 @@ describe('decodeTab', () => {
   it('reports the sheet row number the teacher would see', () => {
     const values = [STUDENTS_TAB.header, ['s1', 'Ana'], ['s2']];
     expect(() => decodeTab(values, decodeStudent)).toThrow('Students row 3');
+  });
+});
+
+describe('date and time cells', () => {
+  it('rejects a takenAt the teacher typed by hand', () => {
+    expect(() => decodeSession(['sess1', 'g1', '26/08/2026'], 4)).toThrow(
+      'takenAt must look like 2026-08-26T09:05, got "26/08/2026"',
+    );
+  });
+
+  it('accepts an ISO timestamp with an offset', () => {
+    expect(decodeSession(['sess1', 'g1', '2026-08-26T09:05:00+08:00'], 4).takenAt).toBe(
+      '2026-08-26T09:05:00+08:00',
+    );
+  });
+
+  it('rejects a behavior date that is not YYYY-MM-DD', () => {
+    expect(() => decodeBehavior(['b1', 's1', '26 Aug', 'positive'], 4)).toThrow('must look like');
   });
 });

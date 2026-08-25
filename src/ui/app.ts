@@ -6,23 +6,14 @@
  * All decisions live in `domain`; this file only renders and turns taps into
  * calls.
  */
-import type { AttendanceStatus } from '../domain/points';
-import type { BehaviorPoint } from '../domain/behavior';
+import { STATUSES, type AttendanceStatus } from '../domain/points';
 import type { Group, Student } from '../domain/group';
-import type { AttendanceRecord, Session } from '../domain/session';
-import {
-  beginRollCall,
-  isComplete,
-  mark,
-  markOf,
-  remaining,
-  type RollCall,
-} from '../domain/rollCall';
+import type { Session } from '../domain/session';
+import type { PointsLedger } from '../domain/score';
+import { beginRollCall, mark, markOf, remaining, type RollCall } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
 import { saveRollCall } from './saveRollCall';
 import type { SheetGateway } from '../infra/sheetGateway';
-
-const STATUSES: readonly AttendanceStatus[] = ['present', 'absent', 'sick', 'other'];
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: 'Here',
@@ -34,8 +25,7 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
 interface Loaded {
   students: Student[];
   groups: Group[];
-  attendance: AttendanceRecord[];
-  behavior: BehaviorPoint[];
+  ledger: PointsLedger;
 }
 
 type View = 'groups' | 'rollCall' | 'scoreboard';
@@ -120,7 +110,11 @@ export class App {
         this.sheet.listAttendance(),
         this.sheet.listBehavior(),
       ]);
-      this.set({ data: { students, groups, attendance, behavior }, message: null, busy: false });
+      this.set({
+        data: { students, groups, ledger: { attendance, behavior } },
+        message: null,
+        busy: false,
+      });
     } catch (error) {
       this.fail(error);
     }
@@ -263,8 +257,14 @@ export class App {
       list.append(row);
     }
 
-    const save = element('button', 'primary', 'Save roll call');
-    save.disabled = !isComplete(rollCall);
+    // Nothing in the spec requires a complete Session, and a lesson can be
+    // interrupted, so a partly-marked roll is saveable — just clearly labelled.
+    const save = element(
+      'button',
+      'primary',
+      left === 0 ? 'Save roll call' : `Save roll call (${String(left)} not marked)`,
+    );
+    save.disabled = rollCall.marks.size === 0;
     save.addEventListener('click', () => {
       void this.save();
     });
@@ -273,7 +273,7 @@ export class App {
   }
 
   private renderScoreboard(data: Loaded): HTMLElement[] {
-    const entries = scoreboard(data.students, data.attendance, data.behavior);
+    const entries = scoreboard(data.students, data.ledger);
     if (entries.length === 0) {
       return [
         element('p', 'muted', 'No students yet. Add rows to the Students tab of your Sheet.'),

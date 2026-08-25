@@ -6,7 +6,7 @@
  * skipping it: a dropped attendance row is a silently wrong Score, which is
  * worse than a visible error.
  */
-import type { AttendanceStatus, BehaviorKind, PointState } from '../domain/points';
+import { BEHAVIOR_KINDS, POINT_STATES, STATUSES } from '../domain/points';
 import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
@@ -78,6 +78,25 @@ function optional(row: SheetRow, index: number): string | undefined {
   return trimmed === '' ? undefined : trimmed;
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/** A cell matching `pattern`, or a RowError naming what was expected. Dates and
+    times are the only fields the Sheet cannot constrain for us. */
+function matching(
+  value: string,
+  pattern: RegExp,
+  expected: string,
+  field: string,
+  tab: string,
+  at: number,
+): string {
+  if (!pattern.test(value)) {
+    throw new RowError(tab, at, `${field} must look like ${expected}, got "${value}"`);
+  }
+  return value;
+}
+
 function oneOf<T extends string>(
   allowed: readonly T[],
   value: string,
@@ -91,10 +110,6 @@ function oneOf<T extends string>(
   }
   return match;
 }
-
-const STATUSES: readonly AttendanceStatus[] = ['present', 'absent', 'sick', 'other'];
-const POINT_STATES: readonly PointState[] = ['awarded', 'held', 'denied'];
-const BEHAVIOR_KINDS: readonly BehaviorKind[] = ['positive', 'negative'];
 
 export function encodeStudent(student: Student): string[] {
   return [student.id, student.name];
@@ -135,7 +150,14 @@ export function decodeSession(row: SheetRow, at: number): Session {
   return {
     id: required(row, 0, 'id', tab, at),
     groupId: required(row, 1, 'groupId', tab, at),
-    takenAt: required(row, 2, 'takenAt', tab, at) as Timestamp,
+    takenAt: matching(
+      required(row, 2, 'takenAt', tab, at),
+      ISO_TIMESTAMP,
+      '2026-08-26T09:05',
+      'takenAt',
+      tab,
+      at,
+    ) as Timestamp,
   };
 }
 
@@ -164,12 +186,32 @@ export function decodeBehavior(row: SheetRow, at: number): BehaviorPoint {
   const point: BehaviorPoint = {
     id: required(row, 0, 'id', tab, at),
     studentId: required(row, 1, 'studentId', tab, at),
-    date: required(row, 2, 'date', tab, at) as CalendarDate,
+    date: matching(
+      required(row, 2, 'date', tab, at),
+      ISO_DATE,
+      '2026-08-26',
+      'date',
+      tab,
+      at,
+    ) as CalendarDate,
     kind: oneOf(BEHAVIOR_KINDS, required(row, 3, 'kind', tab, at), 'kind', tab, at),
   };
   const note = optional(row, 4);
   return note === undefined ? point : { ...point, note };
 }
+
+/** The index of an Attendance row, or -1. Row order and column positions are
+    this module's knowledge, so both gateways ask rather than reimplement. */
+export function findAttendanceRow(
+  values: readonly SheetRow[],
+  sessionId: string,
+  studentId: string,
+): number {
+  return values.findIndex((row, at) => at > 0 && row[0] === sessionId && row[1] === studentId);
+}
+
+/** The A1 column holding the Point of an Attendance row. */
+export const POINT_COLUMN = 'D';
 
 /** Decode a whole tab's values, skipping the header row. Row numbers in errors
     are 1-based Sheet rows, so they match what the teacher sees. */

@@ -1,8 +1,14 @@
 /** Attendance status chosen during roll call. */
 export type AttendanceStatus = 'present' | 'absent' | 'sick' | 'other';
 
-/** Where an attendance point stands. `held` is pending until documentation is known. */
+/** Every Attendance Status, in the order the teacher sees them. One list, so
+    the buttons on screen and the values the Sheet accepts cannot drift apart. */
+export const STATUSES: readonly AttendanceStatus[] = ['present', 'absent', 'sick', 'other'];
+
+/** Where an attendance point stands. A `held` point waits for documentation. */
 export type PointState = 'awarded' | 'held' | 'denied';
+
+export const POINT_STATES: readonly PointState[] = ['awarded', 'held', 'denied'];
 
 /** The point state assigned at roll call, before any later resolution. */
 export function initialPointState(status: AttendanceStatus): PointState {
@@ -29,6 +35,8 @@ export function attendancePoints(state: PointState): number {
 
 /** A behavior point awarded ad hoc during class. */
 export type BehaviorKind = 'positive' | 'negative';
+
+export const BEHAVIOR_KINDS: readonly BehaviorKind[] = ['positive', 'negative'];
 
 /** Behavior points are immediate and final: +1 positive, -1 negative. */
 export function behaviorPoints(kind: BehaviorKind): number {

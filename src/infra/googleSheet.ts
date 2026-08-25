@@ -26,6 +26,8 @@ import {
   encodeGroup,
   encodeSession,
   encodeStudent,
+  findAttendanceRow,
+  POINT_COLUMN,
   type SheetRow,
   type TabSchema,
 } from './rows';
@@ -161,14 +163,13 @@ export class GoogleSheet implements SheetGateway {
   async setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {
     await this.withSheet(async (id) => {
       const values = await this.api.getValues(id, wholeTab(ATTENDANCE_TAB));
-      const index = values.findIndex(
-        (row, at) => at > 0 && row[0] === sessionId && row[1] === studentId,
-      );
+      const index = findAttendanceRow(values, sessionId, studentId);
       if (index === -1) {
         throw new Error(`no attendance record for ${studentId} in ${sessionId}`);
       }
-      // Point is column D; sheet rows are 1-based.
-      await this.api.updateValues(id, `${ATTENDANCE_TAB.title}!D${index + 1}`, [[state]]);
+      // Sheet rows are 1-based.
+      const cell = `${ATTENDANCE_TAB.title}!${POINT_COLUMN}${String(index + 1)}`;
+      await this.api.updateValues(id, cell, [[state]]);
     });
   }
 }

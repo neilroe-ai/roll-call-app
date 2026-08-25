@@ -60,9 +60,14 @@ describe('FakeSheet', () => {
       kind: 'positive',
     });
 
-    const before = scoreFor('s1', await sheet.listAttendance(), await sheet.listBehavior());
+    const ledger = async () => ({
+      attendance: await sheet.listAttendance(),
+      behavior: await sheet.listBehavior(),
+    });
+
+    const before = scoreFor('s1', await ledger());
     await sheet.setPointState('sess1', 's1', 'awarded');
-    const after = scoreFor('s1', await sheet.listAttendance(), await sheet.listBehavior());
+    const after = scoreFor('s1', await ledger());
 
     expect(before).toBe(1);
     expect(after).toBe(2);

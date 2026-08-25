@@ -7,7 +7,7 @@
  * ordinary — the teacher taps the wrong row, or a Student walks in late.
  */
 import type { AttendanceStatus } from './points';
-import type { Group, Student } from './group';
+import { membersOf, type Group, type Student } from './group';
 import { recordAttendance, type AttendanceRecord, type Session } from './session';
 
 export interface RollCall {
@@ -21,11 +21,7 @@ export interface RollCall {
 /** Begin marking a Group. Ids with no matching Student are left out of the roll
     rather than shown as a blank row. */
 export function beginRollCall(session: Session, group: Group, students: Student[]): RollCall {
-  const byId = new Map(students.map((student) => [student.id, student]));
-  const roll = group.studentIds
-    .map((id) => byId.get(id))
-    .filter((student): student is Student => student !== undefined);
-  return { session, roll, marks: new Map() };
+  return { session, roll: membersOf(group, students), marks: new Map() };
 }
 
 /** Mark one Student. Marking again replaces the earlier mark. */

@@ -7,7 +7,7 @@ describe('initialPointState', () => {
     expect(initialPointState('absent')).toBe('denied');
   });
 
-  it('sick and other are held pending documentation', () => {
+  it('sick and other are held until documentation arrives', () => {
     expect(initialPointState('sick')).toBe('held');
     expect(initialPointState('other')).toBe('held');
   });

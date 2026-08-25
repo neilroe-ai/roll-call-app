@@ -24,6 +24,7 @@ import {
   encodeGroup,
   encodeSession,
   encodeStudent,
+  findAttendanceRow,
   type SheetRow,
 } from './rows';
 import type { SheetGateway } from './sheetGateway';
@@ -116,9 +117,7 @@ export class FakeSheet implements SheetGateway {
 
   setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {
     const rows = this.rowsOf(ATTENDANCE_TAB.title);
-    const index = rows.findIndex(
-      (row, at) => at > 0 && row[0] === sessionId && row[1] === studentId,
-    );
+    const index = findAttendanceRow(rows, sessionId, studentId);
     if (index === -1) {
       return Promise.reject(new Error(`no attendance record for ${studentId} in ${sessionId}`));
     }

@@ -46,6 +46,11 @@ _Avoid_: pending, provisional
 A point the teacher awards or subtracts for a Student's conduct, worth +1 or -1.
 It belongs to a Student and a date, not to a Session.
 
+**Points Ledger**:
+Every Attendance Record and Behavior Point a Score is worked out from. It is
+what the Sheet holds, not a separate total.
+_Avoid_: history, log (a Notes Log is a different thing)
+
 **Score**:
 A Student's single running total: attendance points plus behavior points.
 _Avoid_: total, tally, grade
