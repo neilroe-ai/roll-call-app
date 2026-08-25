@@ -21,6 +21,8 @@ export interface SheetGateway {
   listAttendance(): Promise<AttendanceRecord[]>;
   listBehavior(): Promise<BehaviorPoint[]>;
 
+  appendStudent(student: Student): Promise<void>;
+  appendGroup(group: Group): Promise<void>;
   appendSession(session: Session): Promise<void>;
   /** Appended as one batch: a Session's records are written together. */
   appendAttendance(records: readonly AttendanceRecord[]): Promise<void>;

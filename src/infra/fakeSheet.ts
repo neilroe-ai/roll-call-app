@@ -89,6 +89,16 @@ export class FakeSheet implements SheetGateway {
     return Promise.resolve(decodeTab(this.rowsOf(BEHAVIOR_TAB.title), decodeBehavior));
   }
 
+  appendStudent(student: Student): Promise<void> {
+    this.rowsOf(STUDENTS_TAB.title).push(encodeStudent(student));
+    return Promise.resolve();
+  }
+
+  appendGroup(group: Group): Promise<void> {
+    this.rowsOf(GROUPS_TAB.title).push(encodeGroup(group));
+    return Promise.resolve();
+  }
+
   appendSession(session: Session): Promise<void> {
     this.rowsOf(SESSIONS_TAB.title).push(encodeSession(session));
     return Promise.resolve();

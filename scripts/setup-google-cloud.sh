@@ -184,11 +184,12 @@ finish() {
 # Replace the example below. Set TOTAL_STAGES to match the stages you write.
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=6
+TOTAL_STAGES=5
 
-# Values live in .env.local, which .gitignore already excludes. Vite exposes
-# only VITE_-prefixed variables to the browser; both of these are public by
-# design (ADR 0001 — no secrets in client code).
+# The client ID lands in .env.local, which .gitignore already excludes. Vite
+# exposes only VITE_-prefixed variables to the browser, and this one is public
+# by design (ADR 0001 — no secrets in client code). There is no Sheet ID to
+# capture: the app creates its own Sheet on first sign-in (ADR 0004).
 ENV_FILE=".env.local"
 
 banner "Roll Call — Google Cloud setup"
@@ -242,16 +243,5 @@ step "Click Create. A panel shows your Client ID (ends in .apps.googleuserconten
 warn "The origin must match exactly: http, not https, and port 5173."
 ask VITE_GOOGLE_CLIENT_ID "Paste the Client ID:"
 write_env VITE_GOOGLE_CLIENT_ID "$VITE_GOOGLE_CLIENT_ID"
-
-stage "The Roll Call Sheet"
-say "Last one: the spreadsheet that stores your roll call."
-open_url "https://sheets.new"
-step "A blank spreadsheet opens. Name it 'Roll Call' (top left, where it says"
-step "  'Untitled spreadsheet')."
-step "Look at the browser address bar. The URL looks like:"
-note "      https://docs.google.com/spreadsheets/d/1AbC...XyZ/edit"
-step "Copy the long code between /d/ and /edit — that is the spreadsheet ID."
-ask VITE_SHEET_ID "Paste the spreadsheet ID:"
-write_env VITE_SHEET_ID "$VITE_SHEET_ID"
 
 finish
