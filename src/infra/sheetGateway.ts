@@ -10,6 +10,7 @@ import type { BehaviorPoint } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
+import type { StudentSummary } from '../domain/studentSummary';
 
 export interface SheetGateway {
   /** Create any missing tabs and header rows. Safe to call repeatedly. */
@@ -20,6 +21,9 @@ export interface SheetGateway {
   listSessions(): Promise<Session[]>;
   listAttendance(): Promise<AttendanceRecord[]>;
   listBehavior(): Promise<BehaviorPoint[]>;
+  /** Each Student's Notes Log as the Sheet holds it, keyed by student id. Read
+      before saving so a rewritten row keeps the Notes already there. */
+  listStudentNotes(): Promise<Map<string, string[]>>;
 
   appendStudent(student: Student): Promise<void>;
   appendGroup(group: Group): Promise<void>;
@@ -27,6 +31,10 @@ export interface SheetGateway {
   /** Appended as one batch: a Session's records are written together. */
   appendAttendance(records: readonly AttendanceRecord[]): Promise<void>;
   appendBehavior(point: BehaviorPoint): Promise<void>;
+
+  /** Rewrite the worked-out columns of the Students tab. Every value is
+      derived, so writing the same summaries twice changes nothing. */
+  saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
 
   /** Resolve a held point later. Throws if no such record exists. */
   setPointState(sessionId: string, studentId: string, state: PointState): Promise<void>;

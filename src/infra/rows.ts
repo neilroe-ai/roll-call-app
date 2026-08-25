@@ -10,6 +10,7 @@ import { BEHAVIOR_KINDS, POINT_STATES, STATUSES } from '../domain/points';
 import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
+import type { StudentSummary } from '../domain/studentSummary';
 
 /** One tab of the Sheet, with the header row it must start with.
     Headers are for the teacher to read: rows are decoded by column position,
@@ -21,8 +22,12 @@ export interface TabSchema {
 
 export const STUDENTS_TAB: TabSchema = {
   title: 'Students',
-  header: ['Student ID', 'Name'],
+  header: ['Student ID', 'Name', 'Score', 'Present', 'Absent', 'Sick', 'Other', 'Notes'],
 };
+
+/** The Students columns the app works out and rewrites. The teacher owns
+    A and B; everything from C rightwards is the app's report. */
+export const SUMMARY_COLUMNS = 'C:H';
 export const GROUPS_TAB: TabSchema = {
   title: 'Groups',
   header: ['Group ID', 'Group Name', 'Student IDs'],
@@ -113,6 +118,62 @@ function oneOf<T extends string>(
 
 export function encodeStudent(student: Student): string[] {
   return [student.id, student.name];
+}
+
+/** A Notes Log in one cell: one Note per line, oldest first, so the teacher
+    reads a Student's history straight down the cell next to the name. */
+export function encodeNotes(notes: readonly string[]): string {
+  return notes.join('\n');
+}
+
+export function decodeNotes(cell: unknown): string[] {
+  if (typeof cell !== 'string') return [];
+  return cell
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+}
+
+/** The Notes Log of every Student in the tab, keyed by id. Rows the app cannot
+    read are skipped: a summary must never stop a roll call being saved. */
+export function decodeStudentNotes(values: readonly SheetRow[]): Map<string, string[]> {
+  const notes = new Map<string, string[]>();
+  for (const row of values.slice(1)) {
+    const id = optional(row, 0);
+    if (id !== undefined) notes.set(id, decodeNotes(row[NOTES_INDEX]));
+  }
+  return notes;
+}
+
+const NOTES_INDEX = 7;
+
+/** The worked-out columns of one Students row, in tab order. Column A and B
+    are left alone: the teacher typed those. */
+export function encodeSummary(summary: StudentSummary): string[] {
+  return [
+    String(summary.score),
+    String(summary.tally.present),
+    String(summary.tally.absent),
+    String(summary.tally.sick),
+    String(summary.tally.other),
+    encodeNotes(summary.notes),
+  ];
+}
+
+/** The summary rows in the order the Sheet holds its Students, so one write
+    covers the whole block. A Student with no row in the tab is left out. */
+export function summaryBlock(
+  values: readonly SheetRow[],
+  summaries: readonly StudentSummary[],
+): string[][] {
+  const byId = new Map(summaries.map((summary) => [summary.studentId, summary]));
+  return values.slice(1).map((row) => {
+    const id = optional(row, 0);
+    const summary = id === undefined ? undefined : byId.get(id);
+    return summary === undefined
+      ? [...row.slice(2, 8)].map((cell) => (typeof cell === 'string' ? cell : ''))
+      : encodeSummary(summary);
+  });
 }
 
 export function decodeStudent(row: SheetRow, at: number): Student {

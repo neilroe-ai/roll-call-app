@@ -11,6 +11,10 @@ import {
   encodeBehavior,
   encodeGroup,
   STUDENTS_TAB,
+  encodeSummary,
+  decodeNotes,
+  decodeStudentNotes,
+  summaryBlock,
 } from './rows';
 
 describe('student rows', () => {
@@ -123,5 +127,52 @@ describe('date and time cells', () => {
 
   it('rejects a behavior date that is not YYYY-MM-DD', () => {
     expect(() => decodeBehavior(['b1', 's1', '26 Aug', 'positive'], 4)).toThrow('must look like');
+  });
+});
+
+describe('the students summary columns', () => {
+  const summary = {
+    studentId: 's1',
+    name: 'Ana',
+    score: 4,
+    tally: { present: 3, absent: 1, sick: 0, other: 2 },
+    notes: ['2026-08-25: forgot her book', '2026-08-26: flu'],
+  };
+
+  it('writes the notes as a list in one cell, oldest at the top', () => {
+    expect(encodeSummary(summary)[5]).toBe('2026-08-25: forgot her book\n2026-08-26: flu');
+  });
+
+  it('writes score then the statuses in the order the header names them', () => {
+    expect(encodeSummary(summary).slice(0, 5)).toEqual(['4', '3', '1', '0', '2']);
+  });
+
+  it('reads a notes cell back into the list it came from', () => {
+    expect(decodeNotes(encodeSummary(summary)[5])).toEqual(summary.notes);
+  });
+
+  it('reads a blank or missing notes cell as no notes', () => {
+    expect(decodeNotes('')).toEqual([]);
+    expect(decodeNotes(undefined)).toEqual([]);
+  });
+
+  it('keys each student notes log by id, skipping rows with no id', () => {
+    const values = [
+      STUDENTS_TAB.header,
+      ['s1', 'Ana', '4', '3', '1', '0', '2', '2026-08-26: flu'],
+      ['', ''],
+    ];
+    expect(decodeStudentNotes(values)).toEqual(new Map([['s1', ['2026-08-26: flu']]]));
+  });
+
+  it('builds the block in the order the sheet holds its students', () => {
+    const values = [STUDENTS_TAB.header, ['s2', 'Ben'], ['s1', 'Ana']];
+    const ben = { ...summary, studentId: 's2', name: 'Ben', score: 1, notes: [] };
+    expect(summaryBlock(values, [summary, ben]).map((row) => row[0])).toEqual(['1', '4']);
+  });
+
+  it('leaves a row it has no summary for exactly as it found it', () => {
+    const values = [STUDENTS_TAB.header, ['s9', 'Unknown', '7', '', '', '', '', 'kept']];
+    expect(summaryBlock(values, [summary])).toEqual([['7', '', '', '', '', 'kept']]);
   });
 });

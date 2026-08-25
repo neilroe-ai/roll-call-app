@@ -4,7 +4,9 @@ import {
   isComplete,
   mark,
   markOf,
+  noteOf,
   recordsToSave,
+  setNote,
   remaining,
   unmark,
 } from './rollCall';
@@ -56,10 +58,51 @@ describe('mark', () => {
   });
 });
 
+describe('setNote', () => {
+  it('holds a note for a student who is not marked yet', () => {
+    const noted = setNote(begin(), 's1', 'arrived late');
+    expect(noteOf(noted, 's1')).toBe('arrived late');
+    expect(noted.marks.size).toBe(0);
+  });
+
+  it('attaches the note to the record once the student is marked', () => {
+    const noted = mark(setNote(begin(), 's1', 'arrived late'), 's1', 'present');
+    expect(markOf(noted, 's1')?.note).toBe('arrived late');
+  });
+
+  it('updates the record of a student already marked', () => {
+    const noted = setNote(mark(begin(), 's1', 'sick'), 's1', 'flu');
+    expect(markOf(noted, 's1')?.note).toBe('flu');
+  });
+
+  it('keeps the note when the status changes', () => {
+    const changed = mark(setNote(mark(begin(), 's1', 'sick'), 's1', 'flu'), 's1', 'present');
+    expect(markOf(changed, 's1')).toMatchObject({ status: 'present', note: 'flu' });
+  });
+
+  it('trims the text and treats blank as no note', () => {
+    expect(noteOf(setNote(begin(), 's1', '  flu  '), 's1')).toBe('flu');
+    const cleared = setNote(setNote(mark(begin(), 's1', 'sick'), 's1', 'flu'), 's1', '   ');
+    expect(noteOf(cleared, 's1')).toBeUndefined();
+    expect(markOf(cleared, 's1')?.note).toBeUndefined();
+  });
+
+  it('does not mutate the roll call it was given', () => {
+    const before = begin();
+    setNote(before, 's1', 'flu');
+    expect(noteOf(before, 's1')).toBeUndefined();
+  });
+});
+
 describe('unmark', () => {
   it('puts the student back among the remaining', () => {
     const marked = mark(begin(), 's1', 'present');
     expect(remaining(unmark(marked, 's1')).map((student) => student.id)).toEqual(['s2', 's1']);
+  });
+
+  it('keeps the note, which is about the student not the tap', () => {
+    const marked = setNote(mark(begin(), 's1', 'sick'), 's1', 'flu');
+    expect(noteOf(unmark(marked, 's1'), 's1')).toBe('flu');
   });
 });
 

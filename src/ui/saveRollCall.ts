@@ -7,8 +7,12 @@
  * Records whose Session row is missing: they still score correctly, and the
  * teacher can retry. Writing the Session first would risk the opposite, a
  * Session that claims a roll was taken while its points are lost.
+ *
+ * The Students summary goes last. Every figure in it is worked out from the
+ * Points Ledger, so a failure there costs a stale report and nothing else.
  */
 import { recordsToSave, type RollCall } from '../domain/rollCall';
+import type { StudentSummary } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
 
 /** How far a save got. Kept so a retry writes only what is still missing and
@@ -24,6 +28,7 @@ export const NOTHING_SAVED: SaveProgress = { recordsSaved: false };
 export async function saveRollCall(
   sheet: SheetGateway,
   rollCall: RollCall,
+  summaries: readonly StudentSummary[],
   progress: SaveProgress,
   onProgress: (progress: SaveProgress) => void,
 ): Promise<void> {
@@ -32,4 +37,5 @@ export async function saveRollCall(
     onProgress({ recordsSaved: true });
   }
   await sheet.appendSession(rollCall.session);
+  await sheet.saveStudentSummaries(summaries);
 }

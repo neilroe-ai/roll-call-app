@@ -7,11 +7,22 @@
  * calls.
  */
 import { STATUSES, type AttendanceStatus } from '../domain/points';
+import { calendarDateOf } from '../domain/behavior';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
 import type { PointsLedger } from '../domain/score';
-import { beginRollCall, mark, markOf, remaining, type RollCall } from '../domain/rollCall';
+import {
+  beginRollCall,
+  mark,
+  markOf,
+  noteOf,
+  recordsToSave,
+  remaining,
+  setNote,
+  type RollCall,
+} from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
+import { summarize, type StudentSummary } from '../domain/studentSummary';
 import { saveRollCall } from './saveRollCall';
 import type { SheetGateway } from '../infra/sheetGateway';
 
@@ -22,18 +33,15 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
   other: 'Other',
 };
 
-/** Only a held point needs explaining, so only `sick` and `other` offer a Note. */
-function needsNote(status: AttendanceStatus): boolean {
-  return status === 'sick' || status === 'other';
-}
-
 interface Loaded {
   students: Student[];
   groups: Group[];
   ledger: PointsLedger;
+  /** Each Student's Notes Log as the Sheet holds it. */
+  notes: Map<string, string[]>;
 }
 
-type View = 'groups' | 'rollCall' | 'scoreboard';
+type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes';
 
 interface Message {
   text: string;
@@ -78,6 +86,10 @@ function element<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+function noStudents(): HTMLElement {
+  return element('p', 'muted', 'No students yet. Add rows to the Students tab of your Sheet.');
+}
+
 export class App {
   private state: AppState = {
     view: 'groups',
@@ -113,14 +125,15 @@ export class App {
 
   private async reload(): Promise<void> {
     try {
-      const [students, groups, attendance, behavior] = await Promise.all([
+      const [students, groups, attendance, behavior, notes] = await Promise.all([
         this.sheet.listStudents(),
         this.sheet.listGroups(),
         this.sheet.listAttendance(),
         this.sheet.listBehavior(),
+        this.sheet.listStudentNotes(),
       ]);
       this.set({
-        data: { students, groups, ledger: { attendance, behavior } },
+        data: { students, groups, ledger: { attendance, behavior }, notes },
         message: null,
         busy: false,
       });
@@ -146,6 +159,23 @@ export class App {
     });
   }
 
+  /** The Students tab as it should read once this roll call is in. Worked out
+      from the Ledger the save is about to create, not from what the Sheet says
+      now, so one write leaves the report correct. */
+  private summariesAfterSave(rollCall: RollCall): StudentSummary[] {
+    const data = this.state.data;
+    if (!data) return [];
+    const ledger: PointsLedger = {
+      attendance: [...data.ledger.attendance, ...recordsToSave(rollCall)],
+      behavior: data.ledger.behavior,
+    };
+    const today = calendarDateOf(this.clock.now());
+    return summarize(data.students, ledger, data.notes, {
+      on: today,
+      byStudent: rollCall.notes,
+    });
+  }
+
   private async save(): Promise<void> {
     const rollCall = this.state.rollCall;
     if (!rollCall) return;
@@ -154,6 +184,7 @@ export class App {
       await saveRollCall(
         this.sheet,
         rollCall,
+        this.summariesAfterSave(rollCall),
         { recordsSaved: this.state.recordsSaved },
         (progress) => {
           this.state = { ...this.state, recordsSaved: progress.recordsSaved };
@@ -180,6 +211,8 @@ export class App {
     if (!data) return;
     if (view === 'rollCall' && this.state.rollCall) this.root.append(...this.renderRollCall());
     else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(data));
+    else if (view === 'summary') this.root.append(...this.renderSummary(data));
+    else if (view === 'notes') this.root.append(...this.renderNotes(data));
     else this.root.append(...this.renderGroups(data));
 
     if (busy) {
@@ -195,6 +228,8 @@ export class App {
     const nav = element('nav');
     const tabs: [View, string][] = [
       ['groups', 'Take roll'],
+      ['summary', 'Summary'],
+      ['notes', 'Notes'],
       ['scoreboard', 'Scoreboard'],
     ];
     for (const [view, label] of tabs) {
@@ -262,13 +297,12 @@ export class App {
         button.setAttribute('aria-pressed', String(chosen === status));
         button.setAttribute('aria-label', `${student.name}: ${STATUS_LABEL[status]}`);
         button.addEventListener('click', () => {
-          // Re-tapping the same status must not silently drop a Note already
-          // written against it.
-          const previous = markOf(rollCall, student.id);
-          const note = previous?.status === status ? previous.note : undefined;
+          // The Note is kept across a change of status: mark() carries it.
           this.set({
-            rollCall: mark(rollCall, student.id, status, note),
-            noteFor: needsNote(status) ? student.id : null,
+            rollCall: mark(rollCall, student.id, status),
+            // Sick and other need explaining, so the field opens itself. Any
+            // other status leaves whatever the teacher already had open.
+            noteFor: status === 'sick' || status === 'other' ? student.id : this.state.noteFor,
           });
         });
         marks.append(button);
@@ -276,20 +310,18 @@ export class App {
       inner.append(marks);
       row.append(inner);
 
-      // A saved Note is otherwise invisible once the field closes, so a held
-      // point always carries a way back into it.
+      // Always offered: a Student can need a Note whatever the teacher marked,
+      // and a saved Note is otherwise invisible once the field closes.
       const open = this.state.noteFor === student.id;
-      if (chosen !== undefined && needsNote(chosen) && !open) {
-        const note = markOf(rollCall, student.id)?.note;
-        const edit = element('button', 'note-open', note === undefined ? 'Add note' : 'Edit note');
-        edit.setAttribute(
-          'aria-label',
-          `${note === undefined ? 'Add' : 'Edit'} note for ${student.name}`,
-        );
+      if (!open) {
+        const note = noteOf(rollCall, student.id);
+        const label = note === undefined ? 'Add note' : 'Edit note';
+        const edit = element('button', 'note-open', label);
+        edit.setAttribute('aria-label', `${label} for ${student.name}`);
         edit.addEventListener('click', () => {
           this.set({ noteFor: student.id });
         });
-        inner.append(edit);
+        marks.append(edit);
         if (note !== undefined) row.append(element('p', 'note-text', note));
       }
       if (open) row.append(this.renderNoteField(rollCall, student));
@@ -311,34 +343,24 @@ export class App {
     return [heading, progress, list, save];
   }
 
-  /** The optional Note on a held point. Open only while the teacher is writing
-      one: dismissing leaves the Attendance Status as it is, Note or not. */
+  /** The Note field. Optional throughout: dismissing leaves the Note and the
+      Attendance Status exactly as they were. */
   private renderNoteField(rollCall: RollCall, student: Student): HTMLElement {
     const wrapper = element('div', 'note');
     const field = element('textarea');
     field.rows = 2;
-    field.value = markOf(rollCall, student.id)?.note ?? '';
+    field.value = noteOf(rollCall, student.id) ?? '';
     field.placeholder = 'Note (optional)';
     field.setAttribute('aria-label', `Note for ${student.name}`);
 
-    const close = (note?: string): void => {
-      const chosen = markOf(rollCall, student.id);
-      if (!chosen) return;
-      this.set({
-        rollCall: mark(rollCall, student.id, chosen.status, note),
-        noteFor: null,
-      });
-    };
-
     const save = element('button', undefined, 'Save note');
     save.addEventListener('click', () => {
-      const text = field.value.trim();
-      close(text === '' ? undefined : text);
+      this.set({ rollCall: setNote(rollCall, student.id, field.value), noteFor: null });
     });
 
     const dismiss = element('button', undefined, 'Dismiss');
     dismiss.addEventListener('click', () => {
-      close(markOf(rollCall, student.id)?.note);
+      this.set({ noteFor: null });
     });
 
     const actions = element('div', 'note-actions');
@@ -347,13 +369,64 @@ export class App {
     return wrapper;
   }
 
+  /** Every Student's Score and how their Attendance Statuses fell out — the
+      Students tab, readable without opening the Sheet. */
+  private renderSummary(data: Loaded): HTMLElement[] {
+    if (data.students.length === 0) return [noStudents()];
+    const summaries = summarize(data.students, data.ledger, data.notes);
+    const heading = element('h1', undefined, 'Summary');
+
+    const table = element('table', 'summary');
+    const head = element('tr');
+    for (const label of ['Name', 'Score', 'Here', 'Absent', 'Sick', 'Other']) {
+      head.append(element('th', undefined, label));
+    }
+    table.append(head);
+
+    for (const summary of summaries) {
+      const row = element('tr');
+      row.append(element('th', 'name', summary.name));
+      for (const value of [
+        summary.score,
+        summary.tally.present,
+        summary.tally.absent,
+        summary.tally.sick,
+        summary.tally.other,
+      ]) {
+        row.append(element('td', undefined, String(value)));
+      }
+      table.append(row);
+    }
+    return [heading, table];
+  }
+
+  /** Every Note the teacher has written, gathered under the Student it is
+      about. A Student with nothing written about them is left out. */
+  private renderNotes(data: Loaded): HTMLElement[] {
+    if (data.students.length === 0) return [noStudents()];
+    const heading = element('h1', undefined, 'Notes');
+    const withNotes = data.students.filter((student) => (data.notes.get(student.id) ?? []).length);
+    if (withNotes.length === 0) {
+      return [heading, element('p', 'muted', 'No notes yet.')];
+    }
+
+    const list = element('ul');
+    for (const student of withNotes) {
+      const item = element('li');
+      item.append(element('h2', undefined, student.name));
+      const entries = element('ul', 'note-log');
+      for (const note of data.notes.get(student.id) ?? []) {
+        entries.append(element('li', undefined, note));
+      }
+      item.append(entries);
+      list.append(item);
+    }
+    return [heading, list];
+  }
+
   private renderScoreboard(data: Loaded): HTMLElement[] {
     const entries = scoreboard(data.students, data.ledger);
-    if (entries.length === 0) {
-      return [
-        element('p', 'muted', 'No students yet. Add rows to the Students tab of your Sheet.'),
-      ];
-    }
+    if (entries.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Scoreboard');
     const list = element('ul');
     for (const entry of entries) {

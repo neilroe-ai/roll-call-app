@@ -7,6 +7,7 @@ import type { BehaviorPoint } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
+import type { StudentSummary } from '../domain/studentSummary';
 import {
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
@@ -18,6 +19,7 @@ import {
   decodeGroup,
   decodeSession,
   decodeStudent,
+  decodeStudentNotes,
   decodeTab,
   encodeAttendance,
   encodeBehavior,
@@ -25,6 +27,7 @@ import {
   encodeSession,
   encodeStudent,
   findAttendanceRow,
+  summaryBlock,
   type SheetRow,
 } from './rows';
 import type { SheetGateway } from './sheetGateway';
@@ -60,6 +63,12 @@ export class FakeSheet implements SheetGateway {
     ]);
   }
 
+  /** The raw rows of a tab, for a test that needs to see what was written
+      rather than what decodes back out. */
+  rowsForTest(title: string): Promise<SheetRow[]> {
+    return Promise.resolve(this.rowsOf(title));
+  }
+
   private rowsOf(title: string): SheetRow[] {
     const rows = this.tabs.get(title);
     if (rows === undefined) throw new Error(`no such tab: ${title}`);
@@ -88,6 +97,20 @@ export class FakeSheet implements SheetGateway {
 
   listBehavior(): Promise<BehaviorPoint[]> {
     return Promise.resolve(decodeTab(this.rowsOf(BEHAVIOR_TAB.title), decodeBehavior));
+  }
+
+  listStudentNotes(): Promise<Map<string, string[]>> {
+    return Promise.resolve(decodeStudentNotes(this.rowsOf(STUDENTS_TAB.title)));
+  }
+
+  saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
+    const rows = this.rowsOf(STUDENTS_TAB.title);
+    const block = summaryBlock(rows, summaries);
+    block.forEach((summaryRow, index) => {
+      const existing = rows[index + 1] as SheetRow;
+      rows[index + 1] = [...existing.slice(0, 2), ...summaryRow];
+    });
+    return Promise.resolve();
   }
 
   appendStudent(student: Student): Promise<void> {

@@ -58,8 +58,11 @@ _Avoid_: total, tally, grade
 ### Notes
 
 **Note**:
-Short free text the teacher attaches to an Attendance Record or a Behavior
-Point, explaining the choice.
+Short free text the teacher writes about a Student, explaining a choice or
+recording something that happened. It can be written at any point in a roll
+call, whether or not the Student has been marked, and it lands in that
+Student's Notes Log. A Note written on a marked Student is also kept on their
+Attendance Record.
 
 **Scoreboard**:
 Every Student's name and Score, highest first, and nothing else. Shown to the
@@ -67,5 +70,13 @@ class, so it carries no Note, Attendance Status or Point State — only the tota
 _Avoid_: leaderboard, ranking, results
 
 **Notes Log**:
-Every Note for one Student in date order. It is a view of Notes already
-attached elsewhere, never a separate place to write them.
+Every Note for one Student in date order. It lives in one cell of the Students
+tab, next to the Student's name, one dated Note per line with the newest at the
+bottom. A Note is only ever added to it.
+
+**Student Summary**:
+What the Students tab says about one Student besides their name: their Score
+and how many Sessions they took each Attendance Status in. Every figure is
+worked out from the Points Ledger, so the app rewrites the whole summary on
+each save. Nothing reads a total back out of it.
+_Avoid_: stats, report card

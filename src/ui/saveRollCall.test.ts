@@ -28,7 +28,7 @@ class SessionWriteFails extends FakeSheet {
 
 const run = async (sheet: SheetGateway, progress: SaveProgress) => {
   let latest = progress;
-  await saveRollCall(sheet, marked(), progress, (next) => (latest = next));
+  await saveRollCall(sheet, marked(), [], progress, (next) => (latest = next));
   return latest;
 };
 
@@ -54,7 +54,7 @@ describe('saveRollCall', () => {
   it('reports the records as saved even when the session write fails', async () => {
     let latest = NOTHING_SAVED;
     await expect(
-      saveRollCall(new SessionWriteFails(), marked(), NOTHING_SAVED, (next) => (latest = next)),
+      saveRollCall(new SessionWriteFails(), marked(), [], NOTHING_SAVED, (next) => (latest = next)),
     ).rejects.toThrow();
     expect(latest).toEqual({ recordsSaved: true });
   });
@@ -73,12 +73,12 @@ describe('saveRollCall', () => {
     const failing = new SessionWriteFails();
     let progress = NOTHING_SAVED;
     await expect(
-      saveRollCall(failing, marked(), progress, (next) => (progress = next)),
+      saveRollCall(failing, marked(), [], progress, (next) => (progress = next)),
     ).rejects.toThrow();
 
     // The teacher taps Save again; the same roll call, now against a working
     // connection, must not append a second set of records.
-    await saveRollCall(sheet, marked(), progress, (next) => (progress = next));
+    await saveRollCall(sheet, marked(), [], progress, (next) => (progress = next));
     expect(await sheet.listAttendance()).toEqual([]);
     expect(await sheet.listSessions()).toEqual([session]);
   });

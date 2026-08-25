@@ -8,6 +8,7 @@ import type { BehaviorPoint } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
+import type { StudentSummary } from '../domain/studentSummary';
 import {
   ALL_TABS,
   ATTENDANCE_TAB,
@@ -20,6 +21,7 @@ import {
   decodeGroup,
   decodeSession,
   decodeStudent,
+  decodeStudentNotes,
   decodeTab,
   encodeAttendance,
   encodeBehavior,
@@ -28,6 +30,8 @@ import {
   encodeStudent,
   findAttendanceRow,
   POINT_COLUMN,
+  summaryBlock,
+  SUMMARY_COLUMNS,
   type SheetRow,
   type TabSchema,
 } from './rows';
@@ -105,8 +109,14 @@ export class GoogleSheet implements SheetGateway {
     }
   }
 
+  /** Make sure the headers on screen match the columns the app writes. A Sheet
+      made before the summary columns existed gains them here. */
   async ensureTabs(): Promise<void> {
-    await this.withSheet((id) => this.api.getValues(id, wholeTab(STUDENTS_TAB)));
+    await this.withSheet(async (id) => {
+      for (const tab of ALL_TABS) {
+        await this.api.updateValues(id, `${tab.title}!A1`, [[...tab.header]]);
+      }
+    });
   }
 
   private async read<T>(tab: TabSchema, decode: (row: SheetRow, at: number) => T): Promise<T[]> {
@@ -134,6 +144,12 @@ export class GoogleSheet implements SheetGateway {
     return this.read(BEHAVIOR_TAB, decodeBehavior);
   }
 
+  async listStudentNotes(): Promise<Map<string, string[]>> {
+    return decodeStudentNotes(
+      await this.withSheet((id) => this.api.getValues(id, wholeTab(STUDENTS_TAB))),
+    );
+  }
+
   private async append(tab: TabSchema, rows: string[][]): Promise<void> {
     await this.withSheet((id) => this.api.appendValues(id, wholeTab(tab), rows));
   }
@@ -156,6 +172,21 @@ export class GoogleSheet implements SheetGateway {
 
   async appendBehavior(point: BehaviorPoint): Promise<void> {
     await this.append(BEHAVIOR_TAB, [encodeBehavior(point)]);
+  }
+
+  /** Rewrite the summary columns in one call. The Sheet, not the app, decides
+      what order the Students sit in, so the rows are read back first and the
+      block written in that same order. */
+  async saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
+    await this.withSheet(async (id) => {
+      const values = await this.api.getValues(id, wholeTab(STUDENTS_TAB));
+      const block = summaryBlock(values, summaries);
+      if (block.length === 0) return;
+      const [first, last] = SUMMARY_COLUMNS.split(':');
+      // Row 1 is the header, so the block starts at row 2.
+      const range = `${STUDENTS_TAB.title}!${first}2:${last}${String(block.length + 1)}`;
+      await this.api.updateValues(id, range, block);
+    });
   }
 
   /** Resolve a held point by overwriting one cell. The row is found by reading
