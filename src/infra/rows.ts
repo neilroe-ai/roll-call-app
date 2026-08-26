@@ -11,7 +11,7 @@ import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { Adjustment } from '../domain/adjustment';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
-import { shareOf, type StudentSummary } from '../domain/studentSummary';
+import { shareText, type StudentSummary } from '../domain/studentSummary';
 
 /** One tab of the Sheet, with the header row it must start with.
     Headers are for the teacher to read: rows are decoded by column position,
@@ -21,7 +21,7 @@ export interface TabSchema {
   header: readonly string[];
 }
 
-/** The register the teacher types: who is in the class, and any figures she
+/** The list the teacher types: who is in the class, and any figures she
     wants carried in or corrected. Per ADR 0007 the app never writes here. */
 export const STUDENTS_TAB: TabSchema = {
   title: 'Students',
@@ -45,10 +45,12 @@ const ADJUST_FIRST = 2;
  * The app fills A and B from the Students tab; the teacher marks membership
  * from C rightwards. A column becomes a Group by being given a heading, and a
  * Student joins it by having anything in that cell — a tick box, a "y", an "x".
+ * The app names no columns of its own: a heading it invented would read on
+ * Take roll as a class the teacher never made.
  */
 export const GROUPS_TAB: TabSchema = {
   title: 'Groups',
-  header: ['Student ID', 'Name', 'Group 1', 'Group 2'],
+  header: ['Student ID', 'Name'],
 };
 
 /** Where the Group columns start on the Groups tab. */
@@ -77,9 +79,12 @@ export const SUMMARY_TAB: TabSchema = {
   ],
 };
 
-/** Which Summary column holds the Notes Log, and how wide the tab is in A1. */
-const SUMMARY_NOTES_INDEX = 13;
-export const SUMMARY_LAST_COLUMN = 'N';
+/** Which Summary column holds the Notes Log, and how wide the tab is in A1.
+    Both are read off the header, so adding a column moves them together. */
+const SUMMARY_NOTES_INDEX = SUMMARY_TAB.header.indexOf('Notes');
+export const SUMMARY_LAST_COLUMN = String.fromCharCode(
+  'A'.charCodeAt(0) + SUMMARY_TAB.header.length - 1,
+);
 export const SESSIONS_TAB: TabSchema = {
   title: 'Sessions',
   header: ['Session ID', 'Group ID', 'Date & Time'],
@@ -201,7 +206,7 @@ export function decodeSummaryNotes(values: readonly SheetRow[]): Map<string, str
 /** One Summary row, in tab order. Counts are shown next to their share of the
     Student's own Sessions, so a raw number is never read as a rate. */
 export function encodeSummary(summary: StudentSummary): string[] {
-  const share = (count: number): string => `${String(shareOf(count, summary.sessions))}%`;
+  const share = (count: number): string => shareText(count, summary.sessions);
   return [
     summary.studentId,
     summary.name,
@@ -322,18 +327,22 @@ export function decodeGroups(values: readonly SheetRow[]): Group[] {
  * Columns A and B of the Groups grid as they should read.
  *
  * Rows keep the order and position the grid already has, so every tick the
- * teacher made stays beside the Student she made it for; Students new to the
- * register go on the end. Names are refreshed from the Students tab, because a
+ * teacher made stays beside the Student she made it for; Students new to the Students
+ * tab go on the end. Names are refreshed from the Students tab, because a
  * Student renamed there should not read as someone else here. A row whose id
- * is no longer in the register is left exactly as it is: her ticks are not the
+ * is no longer on the Students tab is left exactly as it is: her ticks are not the
  * app's to throw away.
  */
-export function groupRoster(values: readonly SheetRow[], students: readonly Student[]): string[][] {
+export function groupsGridColumns(
+  values: readonly SheetRow[],
+  students: readonly Student[],
+): string[][] {
   const byId = new Map(students.map((student) => [student.id, student]));
   const seen = new Set<string>();
   const rows = values.slice(1).map((row) => {
     const id = optional(row, 0);
-    if (id === undefined) return [optional(row, 0) ?? '', optional(row, 1) ?? ''];
+    // No id: not a Student's row, so there is no name to refresh. Keep it.
+    if (id === undefined) return ['', optional(row, 1) ?? ''];
     seen.add(id);
     return [id, byId.get(id)?.name ?? optional(row, 1) ?? ''];
   });

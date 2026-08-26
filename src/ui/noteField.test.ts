@@ -71,7 +71,7 @@ function noteField(): HTMLTextAreaElement | null {
 
 /** The Student's Notes Log as the Sheet ended up holding it. */
 async function savedLog(studentId: string): Promise<string[]> {
-  return (await sheet.listStudentNotes()).get(studentId) ?? [];
+  return (await sheet.listNotesLogs()).get(studentId) ?? [];
 }
 
 /** The Note the Sheet ended up with for one Student. */

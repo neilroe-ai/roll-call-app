@@ -34,7 +34,7 @@ import {
   type RollCall,
 } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
-import { shareOf, summarize, type StudentSummary } from '../domain/studentSummary';
+import { shareText, summarize, type StudentSummary } from '../domain/studentSummary';
 import { saveRollCall } from './saveRollCall';
 import type { SheetGateway } from '../infra/sheetGateway';
 
@@ -173,15 +173,15 @@ export class App {
     try {
       const students = await this.sheet.listStudents();
       // Every Student needs a row in the Groups grid before the teacher can
-      // tick them into anything, so the register is pushed across first.
-      await this.sheet.syncGroupRoster(students);
+      // tick them into anything, so the Students tab is pushed across first.
+      await this.sheet.syncGroupsGrid(students);
       const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
         this.sheet.listGroups(),
         this.sheet.listSessions(),
         this.sheet.listAttendance(),
         this.sheet.listBehavior(),
         this.sheet.listAdjustments(),
-        this.sheet.listStudentNotes(),
+        this.sheet.listNotesLogs(),
       ]);
       this.set({
         data: {
@@ -369,18 +369,22 @@ export class App {
   }
 
   private renderGroups(data: Loaded): HTMLElement[] {
-    if (data.groups.length === 0) {
+    // A Group the teacher has named but not filled in is a real Group, and the
+    // grid still shows it. There is no roll to take in it, so Take roll does
+    // not offer it.
+    const groups = data.groups.filter((group) => group.studentIds.length > 0);
+    if (groups.length === 0) {
       return [
         element(
           'p',
           'muted',
-          'No groups yet. Add rows to the Groups tab of your Roll Call Sheet, then reopen this page.',
+          'No groups yet. Head a column on the Groups tab of your Roll Call Sheet and tick the students in it, then reopen this page.',
         ),
       ];
     }
     const heading = element('h1', undefined, 'Take roll');
     const list = element('ul');
-    for (const group of data.groups) {
+    for (const group of groups) {
       const item = element('li');
       const button = element(
         'button',
@@ -574,7 +578,7 @@ export class App {
       row.append(element('td', undefined, String(summary.score)));
       for (const status of STATUSES) {
         const count = summary.counts[status];
-        const text = asShare ? `${String(shareOf(count, summary.sessions))}%` : String(count);
+        const text = asShare ? shareText(count, summary.sessions) : String(count);
         row.append(element('td', undefined, text));
       }
       table.append(row);

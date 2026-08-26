@@ -1,7 +1,7 @@
 /** A person counted in roll call. Exists independently of any Group. */
 export interface Student {
   id: string;
-  /** Display name as the teacher writes it on the register. */
+  /** Display name as the teacher writes it on the Students tab. */
   name: string;
 }
 

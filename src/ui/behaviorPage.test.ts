@@ -123,7 +123,7 @@ test('an explained point earns a line in the notes log, a bare one does not', as
   await award('Amy', '-1', 'threw a pen');
   await award('Ben', '+1');
 
-  const notes = await sheet.listStudentNotes();
+  const notes = await sheet.listNotesLogs();
   expect(notes.get('s1')).toEqual(['2026-08-26: -1 threw a pen']);
   expect(notes.get('s2') ?? []).toEqual([]);
 });
@@ -133,7 +133,7 @@ test('two points on one student both stand', async () => {
   await award('Amy', '-1', 'second');
 
   expect(await sheet.listBehavior()).toHaveLength(2);
-  expect((await sheet.listStudentNotes()).get('s1')).toEqual([
+  expect((await sheet.listNotesLogs()).get('s1')).toEqual([
     '2026-08-26: +1 first',
     '2026-08-26: -1 second',
   ]);

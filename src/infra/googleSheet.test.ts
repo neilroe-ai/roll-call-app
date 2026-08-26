@@ -182,7 +182,7 @@ describe('the summary tab', () => {
     });
   });
 
-  it('blanks a row left behind by a student who has gone from the register', async () => {
+  it('blanks a row left behind by a student who has gone from the Students tab', async () => {
     const existing = {
       body: { values: [SUMMARY_TAB.header, ['s1', 'Ana'], ['s9', 'Gone', '', '3']] },
     };
@@ -204,11 +204,11 @@ describe('the summary tab', () => {
   });
 });
 
-describe('the groups roster', () => {
+describe('the groups grid columns', () => {
   it('writes only the two columns the app owns', async () => {
     const grid = { body: { values: [GROUPS_TAB.header, ['s1', 'Ana', 'y']] } };
     const stub = new FetchStub([grid, ok]);
-    await build(stub, new MemoryIdStore('sheet1')).syncGroupRoster([
+    await build(stub, new MemoryIdStore('sheet1')).syncGroupsGrid([
       { id: 's1', name: 'Ana' },
       { id: 's2', name: 'Ben' },
     ]);

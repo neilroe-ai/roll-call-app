@@ -26,11 +26,11 @@ export interface SheetGateway {
   listBehavior(): Promise<BehaviorPoint[]>;
   /** Each Student's Notes Log as the Sheet holds it, keyed by student id. Read
       before saving so a rewritten row keeps the Notes already there. */
-  listStudentNotes(): Promise<Map<string, string[]>>;
+  listNotesLogs(): Promise<Map<string, string[]>>;
 
-  /** Put a row in the Groups grid for every Student on the register, leaving
+  /** Put a row in the Groups grid for every Student on the Students tab, leaving
       the teacher's membership columns untouched. Safe to call repeatedly. */
-  syncGroupRoster(students: readonly Student[]): Promise<void>;
+  syncGroupsGrid(students: readonly Student[]): Promise<void>;
 
   appendSession(session: Session): Promise<void>;
   /** Appended as one batch: a Session's records are written together. */

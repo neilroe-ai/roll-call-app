@@ -84,6 +84,11 @@ export function shareOf(count: number, sessions: number): number {
   return sessions === 0 ? 0 : Math.round((count / sessions) * 100);
 }
 
+/** The same share as the Sheet and the screen both show it. */
+export function shareText(count: number, sessions: number): string {
+  return `${String(shareOf(count, sessions))}%`;
+}
+
 /** One line of a Notes Log: the date, then what the teacher wrote. Dated so a
     list of them stays readable once it is several lessons long. */
 export function noteEntry(date: CalendarDate, note: string): string {

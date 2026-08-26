@@ -28,7 +28,7 @@ import {
   encodeBehavior,
   encodeSession,
   findAttendanceRow,
-  groupRoster,
+  groupsGridColumns,
   summaryBlock,
   type SheetRow,
 } from './rows';
@@ -111,15 +111,15 @@ export class FakeSheet implements SheetGateway {
     return Promise.resolve(decodeTab(this.rowsOf(BEHAVIOR_TAB.title), decodeBehavior));
   }
 
-  listStudentNotes(): Promise<Map<string, string[]>> {
+  listNotesLogs(): Promise<Map<string, string[]>> {
     return Promise.resolve(decodeSummaryNotes(this.rowsOf(SUMMARY_TAB.title)));
   }
 
-  syncGroupRoster(students: readonly Student[]): Promise<void> {
+  syncGroupsGrid(students: readonly Student[]): Promise<void> {
     const rows = this.rowsOf(GROUPS_TAB.title);
-    groupRoster(rows, students).forEach((roster, index) => {
+    groupsGridColumns(rows, students).forEach((columns, index) => {
       const existing = rows[index + 1] ?? [];
-      rows[index + 1] = [...roster, ...existing.slice(2)];
+      rows[index + 1] = [...columns, ...existing.slice(2)];
     });
     return Promise.resolve();
   }

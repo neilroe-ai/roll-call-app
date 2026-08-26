@@ -32,7 +32,7 @@ import {
   encodeBehavior,
   encodeSession,
   findAttendanceRow,
-  groupRoster,
+  groupsGridColumns,
   POINT_COLUMN,
   summaryBlock,
   type SheetRow,
@@ -158,7 +158,7 @@ export class GoogleSheet implements SheetGateway {
     return this.read(BEHAVIOR_TAB, decodeBehavior);
   }
 
-  async listStudentNotes(): Promise<Map<string, string[]>> {
+  async listNotesLogs(): Promise<Map<string, string[]>> {
     return decodeSummaryNotes(
       await this.withSheet((id) => this.api.getValues(id, wholeTab(SUMMARY_TAB))),
     );
@@ -171,12 +171,12 @@ export class GoogleSheet implements SheetGateway {
    * never in the range, so a tick cannot be lost even if this runs while she
    * is part way through filling the grid in.
    */
-  async syncGroupRoster(students: readonly Student[]): Promise<void> {
+  async syncGroupsGrid(students: readonly Student[]): Promise<void> {
     await this.withSheet(async (id) => {
       const values = await this.api.getValues(id, wholeTab(GROUPS_TAB));
-      const rows = groupRoster(values, students);
+      const rows = groupsGridColumns(values, students);
       if (rows.length === 0) return;
-      // Row 1 is the header, so the roster starts at row 2.
+      // Row 1 is the header, so the Student rows start at row 2.
       const range = `${GROUPS_TAB.title}!A2:B${String(rows.length + 1)}`;
       await this.api.updateValues(id, range, rows);
     });
@@ -203,14 +203,14 @@ export class GoogleSheet implements SheetGateway {
    *
    * The app owns every cell here, so the block is written as it stands rather
    * than merged into what is already there. Rows the teacher has since removed
-   * from the register would otherwise be left behind, so the tab is cleared
+   * from the Students tab would otherwise be left behind, so the tab is cleared
    * first and only the current Students written back.
    */
   async saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
     await this.withSheet(async (id) => {
       const existing = await this.api.getValues(id, wholeTab(SUMMARY_TAB));
       const block = summaryBlock(summaries);
-      // Pad to whatever the tab already holds, so a shorter register blanks the
+      // Pad to whatever the tab already holds, so a shorter list blanks the
       // rows it no longer needs instead of leaving stale ones below.
       const width = SUMMARY_TAB.header.length;
       const blank = Array.from({ length: width }, () => '');

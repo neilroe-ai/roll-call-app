@@ -18,7 +18,7 @@ import {
   decodeNotes,
   decodeSummaryNotes,
   groupIdForColumn,
-  groupRoster,
+  groupsGridColumns,
   isTicked,
   summaryBlock,
   mergeHeader,
@@ -103,7 +103,7 @@ describe('what counts as a tick', () => {
   });
 });
 
-describe('the groups roster', () => {
+describe('the groups grid columns', () => {
   const students = [
     { id: 's1', name: 'Ana' },
     { id: 's2', name: 'Ben' },
@@ -111,7 +111,7 @@ describe('the groups roster', () => {
 
   it('adds a row for a student who has none yet', () => {
     const grid = [GROUPS_TAB.header, ['s1', 'Ana', 'y']];
-    expect(groupRoster(grid, students)).toEqual([
+    expect(groupsGridColumns(grid, students)).toEqual([
       ['s1', 'Ana'],
       ['s2', 'Ben'],
     ]);
@@ -119,23 +119,23 @@ describe('the groups roster', () => {
 
   it('keeps every row where it was, so the ticks beside it still apply', () => {
     const grid = [GROUPS_TAB.header, ['s2', 'Ben', 'y'], ['s1', 'Ana']];
-    expect(groupRoster(grid, students).map((row) => row[0])).toEqual(['s2', 's1']);
+    expect(groupsGridColumns(grid, students).map((row) => row[0])).toEqual(['s2', 's1']);
   });
 
-  it('refreshes a name the teacher changed on the register', () => {
+  it('refreshes a name the teacher changed on the Students tab', () => {
     const grid = [GROUPS_TAB.header, ['s1', 'Anna']];
-    expect(groupRoster(grid, students)[0]).toEqual(['s1', 'Ana']);
+    expect(groupsGridColumns(grid, students)[0]).toEqual(['s1', 'Ana']);
   });
 
-  it('leaves a row whose student has gone from the register alone', () => {
+  it('leaves a row whose student has gone from the Students tab alone', () => {
     const grid = [GROUPS_TAB.header, ['s9', 'Old', 'y']];
     // Only A and B are ever written, so the tick in C survives regardless.
-    expect(groupRoster(grid, students)[0]).toEqual(['s9', 'Old']);
+    expect(groupsGridColumns(grid, students)[0]).toEqual(['s9', 'Old']);
   });
 
   it('writes only the two columns it owns', () => {
     const grid = [GROUPS_TAB.header, ['s1', 'Ana', 'y', 'y']];
-    expect(groupRoster(grid, students).every((row) => row.length === 2)).toBe(true);
+    expect(groupsGridColumns(grid, students).every((row) => row.length === 2)).toBe(true);
   });
 });
 

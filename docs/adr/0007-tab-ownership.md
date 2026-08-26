@@ -59,7 +59,8 @@ is never a stored total, and she can always see and undo the part she supplied.
 ## Consequences
 
 - `summaryColumnsAreOurs` and `SummaryColumnsTakenError` are deleted. The app
-  cannot overwrite the teacher's work because it never writes in her tab.
+  cannot overwrite the teacher's work: on the Students tab it writes only the
+  header row, and on the Groups tab only columns A and B.
 - She can edit any figure she likes, at any time, without fighting the app.
   What she typed and what the app worked out stay visibly separate.
 - The Summary tab carries the percentages the phone shows, so she can do admin
