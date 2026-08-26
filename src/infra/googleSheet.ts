@@ -4,6 +4,7 @@
  * Per ADR 0004 the app creates the Sheet itself, so `drive.file` can reach it.
  * The id is remembered per device; a device that has never signed in makes one.
  */
+import type { Adjustment } from '../domain/adjustment';
 import type { BehaviorPoint } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { Group, Student } from '../domain/group';
@@ -16,43 +17,29 @@ import {
   GROUPS_TAB,
   SESSIONS_TAB,
   STUDENTS_TAB,
+  SUMMARY_LAST_COLUMN,
+  SUMMARY_TAB,
+  decodeAdjustments,
   decodeAttendance,
   decodeBehavior,
-  decodeGroup,
+  decodeGroups,
   decodeSession,
   decodeStudent,
-  decodeStudentNotes,
+  decodeSummaryNotes,
   decodeTab,
   mergeHeader,
   encodeAttendance,
   encodeBehavior,
-  encodeGroup,
   encodeSession,
-  encodeStudent,
   findAttendanceRow,
+  groupRoster,
   POINT_COLUMN,
   summaryBlock,
-  summaryColumnsAreOurs,
-  SUMMARY_COLUMNS,
   type SheetRow,
   type TabSchema,
 } from './rows';
 import { SheetsApiError, type SheetsApi } from './sheetsApi';
 import type { SheetGateway } from './sheetGateway';
-
-/** Raised when the Students tab already has the teacher's own columns where
-    the summary goes. Writing there would destroy work the app never made, so
-    it refuses and says so instead. */
-export class SummaryColumnsTakenError extends Error {
-  constructor() {
-    super(
-      `Your Students tab has its own columns in ${SUMMARY_COLUMNS}. ` +
-        'The roll call was saved, but the score, counts and notes were not written there. ' +
-        'Move those columns to the right of the Notes column to let the app fill them in.',
-    );
-    this.name = 'SummaryColumnsTakenError';
-  }
-}
 
 export const SHEET_TITLE = 'Roll Call';
 export const SHEET_ID_KEY = 'rollcall.spreadsheetId';
@@ -147,8 +134,16 @@ export class GoogleSheet implements SheetGateway {
     return this.read(STUDENTS_TAB, decodeStudent);
   }
 
-  listGroups(): Promise<Group[]> {
-    return this.read(GROUPS_TAB, decodeGroup);
+  /** The Groups grid is read whole, not row by row: a Group is a column, so no
+      single row describes one. */
+  async listGroups(): Promise<Group[]> {
+    return decodeGroups(await this.withSheet((id) => this.api.getValues(id, wholeTab(GROUPS_TAB))));
+  }
+
+  async listAdjustments(): Promise<Map<string, Adjustment>> {
+    return decodeAdjustments(
+      await this.withSheet((id) => this.api.getValues(id, wholeTab(STUDENTS_TAB))),
+    );
   }
 
   listSessions(): Promise<Session[]> {
@@ -164,21 +159,31 @@ export class GoogleSheet implements SheetGateway {
   }
 
   async listStudentNotes(): Promise<Map<string, string[]>> {
-    return decodeStudentNotes(
-      await this.withSheet((id) => this.api.getValues(id, wholeTab(STUDENTS_TAB))),
+    return decodeSummaryNotes(
+      await this.withSheet((id) => this.api.getValues(id, wholeTab(SUMMARY_TAB))),
     );
+  }
+
+  /**
+   * Give every Student a row in the Groups grid.
+   *
+   * Only columns A and B are written. The teacher's membership columns are
+   * never in the range, so a tick cannot be lost even if this runs while she
+   * is part way through filling the grid in.
+   */
+  async syncGroupRoster(students: readonly Student[]): Promise<void> {
+    await this.withSheet(async (id) => {
+      const values = await this.api.getValues(id, wholeTab(GROUPS_TAB));
+      const rows = groupRoster(values, students);
+      if (rows.length === 0) return;
+      // Row 1 is the header, so the roster starts at row 2.
+      const range = `${GROUPS_TAB.title}!A2:B${String(rows.length + 1)}`;
+      await this.api.updateValues(id, range, rows);
+    });
   }
 
   private async append(tab: TabSchema, rows: string[][]): Promise<void> {
     await this.withSheet((id) => this.api.appendValues(id, wholeTab(tab), rows));
-  }
-
-  async appendStudent(student: Student): Promise<void> {
-    await this.append(STUDENTS_TAB, [encodeStudent(student)]);
-  }
-
-  async appendGroup(group: Group): Promise<void> {
-    await this.append(GROUPS_TAB, [encodeGroup(group)]);
   }
 
   async appendSession(session: Session): Promise<void> {
@@ -193,19 +198,27 @@ export class GoogleSheet implements SheetGateway {
     await this.append(BEHAVIOR_TAB, [encodeBehavior(point)]);
   }
 
-  /** Rewrite the summary columns in one call. The Sheet, not the app, decides
-      what order the Students sit in, so the rows are read back first and the
-      block written in that same order. */
+  /**
+   * Rewrite the Summary tab in one call.
+   *
+   * The app owns every cell here, so the block is written as it stands rather
+   * than merged into what is already there. Rows the teacher has since removed
+   * from the register would otherwise be left behind, so the tab is cleared
+   * first and only the current Students written back.
+   */
   async saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
     await this.withSheet(async (id) => {
-      const values = await this.api.getValues(id, wholeTab(STUDENTS_TAB));
-      if (!summaryColumnsAreOurs(values)) throw new SummaryColumnsTakenError();
-      const block = summaryBlock(values, summaries);
-      if (block.length === 0) return;
-      const [first, last] = SUMMARY_COLUMNS.split(':');
-      // Row 1 is the header, so the block starts at row 2.
-      const range = `${STUDENTS_TAB.title}!${first}2:${last}${String(block.length + 1)}`;
-      await this.api.updateValues(id, range, block);
+      const existing = await this.api.getValues(id, wholeTab(SUMMARY_TAB));
+      const block = summaryBlock(summaries);
+      // Pad to whatever the tab already holds, so a shorter register blanks the
+      // rows it no longer needs instead of leaving stale ones below.
+      const width = SUMMARY_TAB.header.length;
+      const blank = Array.from({ length: width }, () => '');
+      const rows = [...block];
+      for (let index = rows.length; index < existing.length - 1; index += 1) rows.push([...blank]);
+      if (rows.length === 0) return;
+      const range = `${SUMMARY_TAB.title}!A2:${SUMMARY_LAST_COLUMN}${String(rows.length + 1)}`;
+      await this.api.updateValues(id, range, rows);
     });
   }
 

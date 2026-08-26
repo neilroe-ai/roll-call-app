@@ -3,6 +3,7 @@ import { noteEntry, sessionsFor, shareOf, summarize, countsFor } from './student
 import type { Group, Student } from './group';
 import type { PointsLedger } from './score';
 import type { AttendanceRecord, Session } from './session';
+import { noAdjustment, type Adjustment } from './adjustment';
 import type { BehaviorPoint } from './behavior';
 
 const students: Student[] = [
@@ -29,12 +30,27 @@ const ledger: PointsLedger = {
 
 describe('countsFor', () => {
   it('counts the sessions a student took each status in', () => {
-    expect(countsFor('s1', ledger)).toEqual({ present: 2, absent: 0, sick: 1, other: 0 });
-    expect(countsFor('s2', ledger)).toEqual({ present: 0, absent: 1, sick: 0, other: 1 });
+    expect(countsFor('s1', ledger, noAdjustment())).toEqual({
+      present: 2,
+      absent: 0,
+      sick: 1,
+      other: 0,
+    });
+    expect(countsFor('s2', ledger, noAdjustment())).toEqual({
+      present: 0,
+      absent: 1,
+      sick: 0,
+      other: 1,
+    });
   });
 
   it('is all zeros for a student with no records', () => {
-    expect(countsFor('s9', ledger)).toEqual({ present: 0, absent: 0, sick: 0, other: 0 });
+    expect(countsFor('s9', ledger, noAdjustment())).toEqual({
+      present: 0,
+      absent: 0,
+      sick: 0,
+      other: 0,
+    });
   });
 });
 
@@ -46,9 +62,17 @@ describe('noteEntry', () => {
 
 describe('summarize', () => {
   const existing = new Map([['s1', ['2026-08-25: forgot her book']]]);
+  const input = (notes = existing, adjustments = new Map<string, Adjustment>()) => ({
+    students,
+    groups: [] as Group[],
+    sessions: [] as Session[],
+    ledger,
+    adjustments,
+    notes,
+  });
 
   it('reports the score the ledger gives, held points included as zero', () => {
-    const [ana, ben] = summarize(students, ledger, existing);
+    const [ana, ben] = summarize(input());
     // Two awarded attendance points plus one positive behavior point; the held
     // sick point counts nothing yet.
     expect(ana?.score).toBe(3);
@@ -56,12 +80,12 @@ describe('summarize', () => {
   });
 
   it('carries the notes already in the sheet through untouched', () => {
-    const [ana] = summarize(students, ledger, existing);
+    const [ana] = summarize(input());
     expect(ana?.notes).toEqual(['2026-08-25: forgot her book']);
   });
 
   it('adds a new note to the bottom of the list', () => {
-    const [ana] = summarize(students, ledger, existing, {
+    const [ana] = summarize(input(), {
       on: '2026-08-26',
       byStudent: new Map([['s1', 'sick note handed in']]),
     });
@@ -69,7 +93,7 @@ describe('summarize', () => {
   });
 
   it('starts a list for a student who had none', () => {
-    const [, ben] = summarize(students, ledger, existing, {
+    const [, ben] = summarize(input(), {
       on: '2026-08-26',
       byStudent: new Map([['s2', 'left early']]),
     });
@@ -77,7 +101,7 @@ describe('summarize', () => {
   });
 
   it('adds nothing for a blank note', () => {
-    const [, ben] = summarize(students, ledger, existing, {
+    const [, ben] = summarize(input(), {
       on: '2026-08-26',
       byStudent: new Map([['s2', '   ']]),
     });
@@ -85,7 +109,7 @@ describe('summarize', () => {
   });
 
   it('names every student, so the tab is rewritten row for row', () => {
-    expect(summarize(students, ledger, new Map()).map((row) => row.name)).toEqual(['Ana', 'Ben']);
+    expect(summarize(input(new Map())).map((row) => row.name)).toEqual(['Ana', 'Ben']);
   });
 });
 
@@ -101,18 +125,18 @@ describe('sessionsFor', () => {
   ];
 
   it('counts every session taken for a group the student belongs to', () => {
-    expect(sessionsFor('s1', groups, sessions)).toBe(3);
-    expect(sessionsFor('s2', groups, sessions)).toBe(2);
+    expect(sessionsFor('s1', groups, sessions, noAdjustment())).toBe(3);
+    expect(sessionsFor('s2', groups, sessions, noAdjustment())).toBe(2);
   });
 
   it('counts a session the student has no record for, not just the ones they were marked in', () => {
     // s2 was marked in one session out of the two their group took.
     const marked = 1;
-    expect(shareOf(marked, sessionsFor('s2', groups, sessions))).toBe(50);
+    expect(shareOf(marked, sessionsFor('s2', groups, sessions, noAdjustment()))).toBe(50);
   });
 
   it('is nothing for a student in no group', () => {
-    expect(sessionsFor('s9', groups, sessions)).toBe(0);
+    expect(sessionsFor('s9', groups, sessions, noAdjustment())).toBe(0);
   });
 });
 
@@ -124,5 +148,57 @@ describe('shareOf', () => {
 
   it('is 0% with no sessions rather than a division by zero', () => {
     expect(shareOf(0, 0)).toBe(0);
+  });
+});
+
+describe('adjustments', () => {
+  const groups: Group[] = [{ id: 'G1', name: 'Class 01', studentIds: ['s1'] }];
+  const carriedIn: Adjustment = {
+    points: 12,
+    counts: { present: 18, absent: 2, sick: 0, other: 0 },
+  };
+  const input = (adjustments: Map<string, Adjustment>) => ({
+    students,
+    groups,
+    sessions: [] as Session[],
+    ledger,
+    adjustments,
+    notes: new Map<string, string[]>(),
+  });
+
+  it('adds the points the teacher carried in from paper', () => {
+    const [ana] = summarize(input(new Map([['s1', carriedIn]])));
+    // Three from the ledger, twelve she brought with her.
+    expect(ana?.score).toBe(15);
+  });
+
+  it('adds the attendance she carried in to the counts', () => {
+    const [ana] = summarize(input(new Map([['s1', carriedIn]])));
+    expect(ana?.counts).toEqual({ present: 20, absent: 2, sick: 1, other: 0 });
+  });
+
+  it('counts carried-in sessions in the denominator, so shares stay sane', () => {
+    const [ana] = summarize(input(new Map([['s1', carriedIn]])));
+    // The app has taken no sessions; all 20 came in on the adjustment.
+    expect(ana?.sessions).toBe(20);
+    expect(shareOf(ana?.counts.present ?? 0, ana?.sessions ?? 0)).toBe(100);
+  });
+
+  it('leaves a student with no adjustment exactly as the ledger says', () => {
+    const [ana] = summarize(input(new Map()));
+    expect(ana?.score).toBe(3);
+    expect(ana?.counts).toEqual({ present: 2, absent: 0, sick: 1, other: 0 });
+  });
+
+  it('takes points away when the teacher corrects downwards', () => {
+    const down: Adjustment = { points: -2, counts: { present: 0, absent: 0, sick: 0, other: 0 } };
+    const [ana] = summarize(input(new Map([['s1', down]])));
+    expect(ana?.score).toBe(1);
+  });
+
+  it('names the groups a student belongs to', () => {
+    const [ana, ben] = summarize(input(new Map()));
+    expect(ana?.groupNames).toEqual(['Class 01']);
+    expect(ben?.groupNames).toEqual([]);
   });
 });

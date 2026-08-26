@@ -8,9 +8,10 @@
  */
 import { BEHAVIOR_KINDS, POINT_STATES, STATUSES } from '../domain/points';
 import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
+import type { Adjustment } from '../domain/adjustment';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
-import type { StudentSummary } from '../domain/studentSummary';
+import { shareOf, type StudentSummary } from '../domain/studentSummary';
 
 /** One tab of the Sheet, with the header row it must start with.
     Headers are for the teacher to read: rows are decoded by column position,
@@ -20,39 +21,65 @@ export interface TabSchema {
   header: readonly string[];
 }
 
+/** The register the teacher types: who is in the class, and any figures she
+    wants carried in or corrected. Per ADR 0007 the app never writes here. */
 export const STUDENTS_TAB: TabSchema = {
   title: 'Students',
-  header: ['Student ID', 'Name', 'Score', 'Present', 'Absent', 'Sick', 'Other', 'Notes'],
+  header: [
+    'Student ID',
+    'Name',
+    'Adjust points',
+    'Adjust present',
+    'Adjust absent',
+    'Adjust sick',
+    'Adjust other',
+  ],
 };
 
-/** The Students columns the app works out and rewrites. The teacher owns
-    A and B; everything from C rightwards is the app's report. */
-export const SUMMARY_COLUMNS = 'C:H';
-
-/** Where the summary columns start, and how many there are. */
-const SUMMARY_FIRST = 2;
-const SUMMARY_WIDTH = 6;
-const NOTES_INDEX = SUMMARY_FIRST + SUMMARY_WIDTH - 1;
+/** Where the Adjustment columns start on the Students tab. */
+const ADJUST_FIRST = 2;
 
 /**
- * Whether the summary columns are the app's to write.
+ * The Groups grid: one row per Student, one column per Group.
  *
- * The teacher may have had a Students tab long before these columns existed,
- * with their own headings in C onwards. Overwriting those would destroy work
- * the app never put there, so the app claims the columns only when they are
- * blank or already say what it would write.
+ * The app fills A and B from the Students tab; the teacher marks membership
+ * from C rightwards. A column becomes a Group by being given a heading, and a
+ * Student joins it by having anything in that cell — a tick box, a "y", an "x".
  */
-export function summaryColumnsAreOurs(values: readonly SheetRow[]): boolean {
-  const header = values[0] ?? [];
-  return STUDENTS_TAB.header.slice(SUMMARY_FIRST).every((expected, offset) => {
-    const found = optional(header, SUMMARY_FIRST + offset);
-    return found === undefined || found === expected;
-  });
-}
 export const GROUPS_TAB: TabSchema = {
   title: 'Groups',
-  header: ['Group ID', 'Group Name', 'Student IDs'],
+  header: ['Student ID', 'Name', 'Group 1', 'Group 2'],
 };
+
+/** Where the Group columns start on the Groups tab. */
+const GROUP_FIRST = 2;
+
+/** The app's report, rewritten whole on every save. Per ADR 0007 the teacher
+    owns none of it, so nothing here has to be preserved — except the Notes
+    Log, which is read back because a Note exists nowhere else. */
+export const SUMMARY_TAB: TabSchema = {
+  title: 'Summary',
+  header: [
+    'Student ID',
+    'Name',
+    'Groups',
+    'Score',
+    'Sessions',
+    'Present',
+    'Present %',
+    'Absent',
+    'Absent %',
+    'Sick',
+    'Sick %',
+    'Other',
+    'Other %',
+    'Notes',
+  ],
+};
+
+/** Which Summary column holds the Notes Log, and how wide the tab is in A1. */
+const SUMMARY_NOTES_INDEX = 13;
+export const SUMMARY_LAST_COLUMN = 'N';
 export const SESSIONS_TAB: TabSchema = {
   title: 'Sessions',
   header: ['Session ID', 'Group ID', 'Date & Time'],
@@ -70,6 +97,7 @@ export const BEHAVIOR_TAB: TabSchema = {
 export const ALL_TABS: readonly TabSchema[] = [
   STUDENTS_TAB,
   GROUPS_TAB,
+  SUMMARY_TAB,
   SESSIONS_TAB,
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
@@ -144,10 +172,6 @@ function oneOf<T extends string>(
   return match;
 }
 
-export function encodeStudent(student: Student): string[] {
-  return [student.id, student.name];
-}
-
 /** A Notes Log in one cell: one Note per line, oldest first, so the teacher
     reads a Student's history straight down the cell next to the name. */
 export function encodeNotes(notes: readonly string[]): string {
@@ -162,46 +186,44 @@ export function decodeNotes(cell: unknown): string[] {
     .filter((line) => line !== '');
 }
 
-/** The Notes Log of every Student in the tab, keyed by id. Rows the app cannot
-    read are skipped: a summary must never stop a roll call being saved. */
-export function decodeStudentNotes(values: readonly SheetRow[]): Map<string, string[]> {
+/** The Notes Log of every Student on the Summary tab, keyed by id. Read back
+    before the tab is rewritten, because a Note is kept nowhere else. Rows the
+    app cannot read are skipped: a summary must never stop a roll call. */
+export function decodeSummaryNotes(values: readonly SheetRow[]): Map<string, string[]> {
   const notes = new Map<string, string[]>();
   for (const row of values.slice(1)) {
     const id = optional(row, 0);
-    if (id !== undefined) notes.set(id, decodeNotes(row[NOTES_INDEX]));
+    if (id !== undefined) notes.set(id, decodeNotes(row[SUMMARY_NOTES_INDEX]));
   }
   return notes;
 }
 
-/** The worked-out columns of one Students row, in tab order. Column A and B
-    are left alone: the teacher typed those. */
+/** One Summary row, in tab order. Counts are shown next to their share of the
+    Student's own Sessions, so a raw number is never read as a rate. */
 export function encodeSummary(summary: StudentSummary): string[] {
+  const share = (count: number): string => `${String(shareOf(count, summary.sessions))}%`;
   return [
+    summary.studentId,
+    summary.name,
+    summary.groupNames.join(', '),
     String(summary.score),
+    String(summary.sessions),
     String(summary.counts.present),
+    share(summary.counts.present),
     String(summary.counts.absent),
+    share(summary.counts.absent),
     String(summary.counts.sick),
+    share(summary.counts.sick),
     String(summary.counts.other),
+    share(summary.counts.other),
     encodeNotes(summary.notes),
   ];
 }
 
-/** The summary rows in the order the Sheet holds its Students, so one write
-    covers the whole block. A Student with no row in the tab is left out. */
-export function summaryBlock(
-  values: readonly SheetRow[],
-  summaries: readonly StudentSummary[],
-): string[][] {
-  const byId = new Map(summaries.map((summary) => [summary.studentId, summary]));
-  return values.slice(1).map((row) => {
-    const id = optional(row, 0);
-    const summary = id === undefined ? undefined : byId.get(id);
-    return summary === undefined
-      ? [...row.slice(SUMMARY_FIRST, NOTES_INDEX + 1)].map((cell) =>
-          typeof cell === 'string' ? cell : '',
-        )
-      : encodeSummary(summary);
-  });
+/** The whole Summary tab below the header, in the order the Students tab holds
+    its Students. The app owns every cell, so this is written as it stands. */
+export function summaryBlock(summaries: readonly StudentSummary[]): string[][] {
+  return summaries.map(encodeSummary);
 }
 
 export function decodeStudent(row: SheetRow, at: number): Student {
@@ -209,25 +231,116 @@ export function decodeStudent(row: SheetRow, at: number): Student {
   return { id: required(row, 0, 'id', tab, at), name: required(row, 1, 'name', tab, at) };
 }
 
-/** Group membership is a list in one cell: comma-separated student ids. */
-export function encodeGroup(group: Group): string[] {
-  return [group.id, group.name, group.studentIds.join(',')];
+/** A whole number the teacher typed. Blank is 0 — most Students need no
+    Adjustment at all — but something unreadable is an error she can see and
+    fix, not a figure silently thrown away. */
+function wholeNumber(row: SheetRow, index: number, field: string, tab: string, at: number): number {
+  const cell = row[index];
+  if (cell === undefined || cell === null || cell === '') return 0;
+  const value = typeof cell === 'number' ? cell : Number(String(cell).trim());
+  if (!Number.isInteger(value)) {
+    throw new RowError(tab, at, `${field} must be a whole number, got "${String(cell)}"`);
+  }
+  return value;
 }
 
-export function decodeGroup(row: SheetRow, at: number): Group {
-  const tab = GROUPS_TAB.title;
-  const ids = optional(row, 2);
+/** The Adjustment one Students row carries. */
+export function decodeAdjustment(row: SheetRow, at: number): Adjustment {
+  const tab = STUDENTS_TAB.title;
+  const count = (offset: number, field: string): number =>
+    wholeNumber(row, ADJUST_FIRST + offset, field, tab, at);
   return {
-    id: required(row, 0, 'id', tab, at),
-    name: required(row, 1, 'name', tab, at),
-    studentIds:
-      ids === undefined
-        ? []
-        : ids
-            .split(',')
-            .map((id) => id.trim())
-            .filter((id) => id !== ''),
+    points: count(0, 'adjust points'),
+    counts: {
+      present: count(1, 'adjust present'),
+      absent: count(2, 'adjust absent'),
+      sick: count(3, 'adjust sick'),
+      other: count(4, 'adjust other'),
+    },
   };
+}
+
+/** Every Student's Adjustment, keyed by id. Students with nothing typed still
+    get an entry, so a caller never has to tell blank from missing. */
+export function decodeAdjustments(values: readonly SheetRow[]): Map<string, Adjustment> {
+  const adjustments = new Map<string, Adjustment>();
+  values.slice(1).forEach((row, index) => {
+    const id = optional(row, 0);
+    if (id !== undefined) adjustments.set(id, decodeAdjustment(row, index + 2));
+  });
+  return adjustments;
+}
+
+/** The Group a column stands for. Identity is the column's position, not its
+    heading, so renaming a Group keeps its Sessions and moving a column does
+    not — the rule that holds for every other column in the Sheet. */
+export function groupIdForColumn(index: number): string {
+  return `G${String(index - GROUP_FIRST + 1)}`;
+}
+
+/** Whether a membership cell counts as a tick.
+ *
+ * Anything the teacher puts there means yes — a Sheets tick box, "y", "x", a
+ * "1" — because guessing wrong in that direction only ever shows her a Student
+ * she can untick. Only an explicit no is read as no.
+ */
+const NOT_TICKED = new Set(['n', 'no', 'false', '0', '-']);
+
+export function isTicked(cell: unknown): boolean {
+  if (typeof cell === 'boolean') return cell;
+  if (typeof cell === 'number') return cell !== 0;
+  if (typeof cell !== 'string') return false;
+  const value = cell.trim().toLowerCase();
+  return value !== '' && !NOT_TICKED.has(value);
+}
+
+/**
+ * Every Group the grid describes, left to right.
+ *
+ * A column with no heading is not a Group: blank columns to the right of the
+ * last one are just empty spreadsheet, not an unnamed class. A Group with no
+ * Students is still a Group — the teacher has named it and is part way through
+ * filling it in.
+ */
+export function decodeGroups(values: readonly SheetRow[]): Group[] {
+  const header = values[0] ?? [];
+  const groups: Group[] = [];
+  for (let column = GROUP_FIRST; column < header.length; column += 1) {
+    const name = optional(header, column);
+    if (name === undefined) continue;
+    const studentIds: string[] = [];
+    for (const row of values.slice(1)) {
+      const id = optional(row, 0);
+      if (id !== undefined && isTicked(row[column])) studentIds.push(id);
+    }
+    groups.push({ id: groupIdForColumn(column), name, studentIds });
+  }
+  return groups;
+}
+
+/**
+ * Columns A and B of the Groups grid as they should read.
+ *
+ * Rows keep the order and position the grid already has, so every tick the
+ * teacher made stays beside the Student she made it for; Students new to the
+ * register go on the end. Names are refreshed from the Students tab, because a
+ * Student renamed there should not read as someone else here. A row whose id
+ * is no longer in the register is left exactly as it is: her ticks are not the
+ * app's to throw away.
+ */
+export function groupRoster(values: readonly SheetRow[], students: readonly Student[]): string[][] {
+  const byId = new Map(students.map((student) => [student.id, student]));
+  const seen = new Set<string>();
+  const rows = values.slice(1).map((row) => {
+    const id = optional(row, 0);
+    if (id === undefined) return [optional(row, 0) ?? '', optional(row, 1) ?? ''];
+    seen.add(id);
+    return [id, byId.get(id)?.name ?? optional(row, 1) ?? ''];
+  });
+  for (const student of students) {
+    if (!seen.has(student.id)) rows.push([student.id, student.name]);
+  }
+  return rows;
 }
 
 export function encodeSession(session: Session): string[] {

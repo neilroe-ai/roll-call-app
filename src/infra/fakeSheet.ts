@@ -3,9 +3,10 @@
  * It stores rows, not records, so it exercises the same encode/decode path as
  * the real Sheet and catches mapping bugs the real gateway would hit.
  */
+import type { Adjustment } from '../domain/adjustment';
 import type { BehaviorPoint } from '../domain/behavior';
 import type { PointState } from '../domain/points';
-import type { Group, Student } from '../domain/group';
+import { isMember, type Group, type Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
 import {
@@ -14,19 +15,20 @@ import {
   GROUPS_TAB,
   SESSIONS_TAB,
   STUDENTS_TAB,
+  SUMMARY_TAB,
+  decodeAdjustments,
   decodeAttendance,
   decodeBehavior,
-  decodeGroup,
+  decodeGroups,
   decodeSession,
   decodeStudent,
-  decodeStudentNotes,
+  decodeSummaryNotes,
   decodeTab,
   encodeAttendance,
   encodeBehavior,
-  encodeGroup,
   encodeSession,
-  encodeStudent,
   findAttendanceRow,
+  groupRoster,
   summaryBlock,
   type SheetRow,
 } from './rows';
@@ -35,6 +37,9 @@ import type { SheetGateway } from './sheetGateway';
 export interface FakeSheetSeed {
   students?: Student[];
   groups?: Group[];
+  /** Hand-typed corrections, keyed by student id, as the Students tab holds
+      them. */
+  adjustments?: ReadonlyMap<string, Adjustment>;
   sessions?: Session[];
   attendance?: AttendanceRecord[];
   behavior?: BehaviorPoint[];
@@ -44,11 +49,14 @@ export class FakeSheet implements SheetGateway {
   private readonly tabs = new Map<string, SheetRow[]>();
 
   constructor(seed: FakeSheetSeed = {}) {
+    const students = seed.students ?? [];
+    const groups = seed.groups ?? [];
     this.tabs.set(STUDENTS_TAB.title, [
       STUDENTS_TAB.header,
-      ...(seed.students ?? []).map(encodeStudent),
+      ...students.map((student) => studentRow(student, seed.adjustments?.get(student.id))),
     ]);
-    this.tabs.set(GROUPS_TAB.title, [GROUPS_TAB.header, ...(seed.groups ?? []).map(encodeGroup)]);
+    this.tabs.set(GROUPS_TAB.title, groupGrid(students, groups));
+    this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header]);
     this.tabs.set(SESSIONS_TAB.title, [
       SESSIONS_TAB.header,
       ...(seed.sessions ?? []).map(encodeSession),
@@ -84,7 +92,11 @@ export class FakeSheet implements SheetGateway {
   }
 
   listGroups(): Promise<Group[]> {
-    return Promise.resolve(decodeTab(this.rowsOf(GROUPS_TAB.title), decodeGroup));
+    return Promise.resolve(decodeGroups(this.rowsOf(GROUPS_TAB.title)));
+  }
+
+  listAdjustments(): Promise<Map<string, Adjustment>> {
+    return Promise.resolve(decodeAdjustments(this.rowsOf(STUDENTS_TAB.title)));
   }
 
   listSessions(): Promise<Session[]> {
@@ -100,26 +112,20 @@ export class FakeSheet implements SheetGateway {
   }
 
   listStudentNotes(): Promise<Map<string, string[]>> {
-    return Promise.resolve(decodeStudentNotes(this.rowsOf(STUDENTS_TAB.title)));
+    return Promise.resolve(decodeSummaryNotes(this.rowsOf(SUMMARY_TAB.title)));
   }
 
-  saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
-    const rows = this.rowsOf(STUDENTS_TAB.title);
-    const block = summaryBlock(rows, summaries);
-    block.forEach((summaryRow, index) => {
-      const existing = rows[index + 1] as SheetRow;
-      rows[index + 1] = [...existing.slice(0, 2), ...summaryRow];
+  syncGroupRoster(students: readonly Student[]): Promise<void> {
+    const rows = this.rowsOf(GROUPS_TAB.title);
+    groupRoster(rows, students).forEach((roster, index) => {
+      const existing = rows[index + 1] ?? [];
+      rows[index + 1] = [...roster, ...existing.slice(2)];
     });
     return Promise.resolve();
   }
 
-  appendStudent(student: Student): Promise<void> {
-    this.rowsOf(STUDENTS_TAB.title).push(encodeStudent(student));
-    return Promise.resolve();
-  }
-
-  appendGroup(group: Group): Promise<void> {
-    this.rowsOf(GROUPS_TAB.title).push(encodeGroup(group));
+  saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
+    this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header, ...summaryBlock(summaries)]);
     return Promise.resolve();
   }
 
@@ -148,4 +154,30 @@ export class FakeSheet implements SheetGateway {
     rows[index] = [...found.slice(0, 3), state, ...found.slice(4)];
     return Promise.resolve();
   }
+}
+
+/** One Students row: what the teacher typed, including any Adjustment. */
+function studentRow(student: Student, adjustment?: Adjustment): string[] {
+  if (adjustment === undefined) return [student.id, student.name];
+  return [
+    student.id,
+    student.name,
+    String(adjustment.points),
+    String(adjustment.counts.present),
+    String(adjustment.counts.absent),
+    String(adjustment.counts.sick),
+    String(adjustment.counts.other),
+  ];
+}
+
+/** The Groups grid a set of Groups would be marked up as: a column per Group,
+    a "y" wherever a Student belongs to one. */
+function groupGrid(students: readonly Student[], groups: readonly Group[]): SheetRow[] {
+  const header = ['Student ID', 'Name', ...groups.map((group) => group.name)];
+  const rows = students.map((student) => [
+    student.id,
+    student.name,
+    ...groups.map((group) => (isMember(group, student.id) ? 'y' : '')),
+  ]);
+  return [header, ...rows];
 }

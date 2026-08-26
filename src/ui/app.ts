@@ -19,6 +19,7 @@ import {
   signOf,
   type CalendarDate,
 } from '../domain/behavior';
+import type { Adjustment } from '../domain/adjustment';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
 import type { PointsLedger } from '../domain/score';
@@ -33,7 +34,7 @@ import {
   type RollCall,
 } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
-import { sessionsFor, shareOf, summarize, type StudentSummary } from '../domain/studentSummary';
+import { shareOf, summarize, type StudentSummary } from '../domain/studentSummary';
 import { saveRollCall } from './saveRollCall';
 import type { SheetGateway } from '../infra/sheetGateway';
 
@@ -49,6 +50,8 @@ interface Loaded {
   groups: Group[];
   sessions: Session[];
   ledger: PointsLedger;
+  /** The teacher's hand-typed corrections, keyed by student id. */
+  adjustments: Map<string, Adjustment>;
   /** Each Student's Notes Log as the Sheet holds it. */
   notes: Map<string, string[]>;
 }
@@ -168,16 +171,27 @@ export class App {
 
   private async reload(): Promise<void> {
     try {
-      const [students, groups, sessions, attendance, behavior, notes] = await Promise.all([
-        this.sheet.listStudents(),
+      const students = await this.sheet.listStudents();
+      // Every Student needs a row in the Groups grid before the teacher can
+      // tick them into anything, so the register is pushed across first.
+      await this.sheet.syncGroupRoster(students);
+      const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
         this.sheet.listGroups(),
         this.sheet.listSessions(),
         this.sheet.listAttendance(),
         this.sheet.listBehavior(),
+        this.sheet.listAdjustments(),
         this.sheet.listStudentNotes(),
       ]);
       this.set({
-        data: { students, groups, sessions, ledger: { attendance, behavior }, notes },
+        data: {
+          students,
+          groups,
+          sessions,
+          ledger: { attendance, behavior },
+          adjustments,
+          notes,
+        },
         message: null,
         busy: false,
       });
@@ -213,10 +227,14 @@ export class App {
       attendance: [...data.ledger.attendance, ...recordsToSave(rollCall)],
       behavior: data.ledger.behavior,
     };
-    return summarize(data.students, ledger, data.notes, {
-      on: this.today(),
-      byStudent: rollCall.notes,
-    });
+    // The Session being saved is not in `data.sessions` yet, but it has just
+    // happened: leaving it out would rate every Student against one Session
+    // fewer than they were actually at.
+    const sessions = [...data.sessions, rollCall.session];
+    return summarize(
+      { ...data, ledger, sessions },
+      { on: this.today(), byStudent: rollCall.notes },
+    );
   }
 
   /** Write the chosen Behavior Point, with whatever the teacher typed to
@@ -242,7 +260,7 @@ export class App {
         point.note === undefined
           ? undefined
           : { on: today, byStudent: new Map([[student.id, behaviorNote(kind, point.note)]]) };
-      await this.sheet.saveStudentSummaries(summarize(data.students, ledger, data.notes, added));
+      await this.sheet.saveStudentSummaries(summarize({ ...data, ledger }, added));
       await this.reload();
       this.set({ message: { text: `${signOf(kind)} for ${student.name}.`, isError: false } });
     } catch (error) {
@@ -263,10 +281,7 @@ export class App {
     this.set({ noteFor: null, busy: true, message: { text: 'Saving…', isError: false } });
     try {
       await this.sheet.saveStudentSummaries(
-        summarize(data.students, data.ledger, data.notes, {
-          on: this.today(),
-          byStudent: new Map([[student.id, text]]),
-        }),
+        summarize(data, { on: this.today(), byStudent: new Map([[student.id, text]]) }),
       );
       await this.reload();
       this.set({ message: { text: 'Note saved.', isError: false } });
@@ -524,7 +539,7 @@ export class App {
       Students tab, readable without opening the Sheet. */
   private renderSummary(data: Loaded): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
-    const summaries = summarize(data.students, data.ledger, data.notes);
+    const summaries = summarize(data);
     const heading = element('h1', undefined, 'Summary');
 
     const { asShare } = this.state;
@@ -553,14 +568,13 @@ export class App {
     table.append(head);
 
     for (const summary of summaries) {
-      const sessions = sessionsFor(summary.studentId, data.groups, data.sessions);
       const row = element('tr');
       row.append(element('th', 'name', summary.name));
       // The Score is a running total, never a share of anything.
       row.append(element('td', undefined, String(summary.score)));
       for (const status of STATUSES) {
         const count = summary.counts[status];
-        const text = asShare ? `${String(shareOf(count, sessions))}%` : String(count);
+        const text = asShare ? `${String(shareOf(count, summary.sessions))}%` : String(count);
         row.append(element('td', undefined, text));
       }
       table.append(row);
@@ -660,7 +674,7 @@ export class App {
   }
 
   private renderScoreboard(data: Loaded): HTMLElement[] {
-    const entries = scoreboard(data.students, data.ledger);
+    const entries = scoreboard(data.students, data.ledger, data.adjustments);
     if (entries.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Scoreboard');
     const list = element('ul');

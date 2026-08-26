@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { FakeSheet } from './fakeSheet';
 import { recordAttendance, type Session } from '../domain/session';
+import { noAdjustment } from '../domain/adjustment';
 import { scoreFor } from '../domain/score';
 
 const session: Session = { id: 'sess1', groupId: 'g1', takenAt: '2026-08-25T09:05:00+08:00' };
@@ -65,9 +66,9 @@ describe('FakeSheet', () => {
       behavior: await sheet.listBehavior(),
     });
 
-    const before = scoreFor('s1', await ledger());
+    const before = scoreFor('s1', await ledger(), noAdjustment());
     await sheet.setPointState('sess1', 's1', 'awarded');
-    const after = scoreFor('s1', await ledger());
+    const after = scoreFor('s1', await ledger(), noAdjustment());
 
     expect(before).toBe(1);
     expect(after).toBe(2);

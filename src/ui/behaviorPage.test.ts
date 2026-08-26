@@ -113,10 +113,10 @@ test('the point counts towards the score at once', async () => {
   await award('Amy', '+1');
   await award('Ben', '-1');
 
-  const rows = await sheet.rowsForTest('Students');
-  // Student ID, Name, Score
-  expect(rows[1]?.slice(0, 3)).toEqual(['s1', 'Amy', '2']);
-  expect(rows[2]?.slice(0, 3)).toEqual(['s2', 'Ben', '-1']);
+  const rows = await sheet.rowsForTest('Summary');
+  // Student ID, Name, Groups, Score
+  expect(rows[1]?.slice(0, 4)).toEqual(['s1', 'Amy', '', '2']);
+  expect(rows[2]?.slice(0, 4)).toEqual(['s2', 'Ben', '', '-1']);
 });
 
 test('an explained point earns a line in the notes log, a bare one does not', async () => {

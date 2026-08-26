@@ -16,7 +16,15 @@ Group and may belong to several.
 A named set of Students that roll call is taken against — a whole class ("3A"),
 a subdivision of one ("3A reading circle"), or a set drawn from several classes
 ("combined science"). Group membership is many-to-many.
+A Group is one column of the Groups grid: its heading is the Group's name, and
+its position is the Group's identity, so renaming a Group keeps its Sessions.
 _Avoid_: Class, cohort, set, roster
+
+**Groups Grid**:
+The Groups tab: one row per Student, one column per Group. The app fills the
+Student ID and Name columns from the Students tab; the teacher marks membership
+in the Group columns, with a tick box or any non-blank mark.
+_Avoid_: matrix, membership table
 
 ### Taking roll
 
@@ -52,8 +60,16 @@ what the Sheet holds, not a separate total.
 _Avoid_: history, log (a Notes Log is a different thing)
 
 **Score**:
-A Student's single running total: attendance points plus behavior points.
+A Student's single running total: attendance points, plus behavior points, plus
+their Adjustment.
 _Avoid_: total, tally, grade
+
+**Adjustment**:
+Figures the teacher types herself on the Students tab and the app adds to what
+the Points Ledger says — points and attendance carried in from paper before the
+app existed, or a correction to a figure the app got wrong. An Adjustment is an
+input, never a total: it stays in the column she owns and is never rewritten.
+_Avoid_: opening balance, offset, manual override
 
 ### Notes
 
@@ -70,19 +86,22 @@ class, so it carries no Note, Attendance Status or Point State — only the tota
 _Avoid_: leaderboard, ranking, results
 
 **Notes Log**:
-Every Note for one Student in date order. It lives in one cell of the Students
+Every Note for one Student in date order. It lives in one cell of the Summary
 tab, next to the Student's name, one dated Note per line with the newest at the
-bottom. A Note is only ever added to it.
+bottom. A Note is only ever added to it, and it is the one thing on the Summary
+tab read back before the tab is rewritten.
 
 **Student Summary**:
-What the Students tab says about one Student besides their name: their Score
-and their Attendance Counts. Every figure is worked out from the Points Ledger,
-so the app rewrites the whole summary on each save. Nothing reads a total back
-out of it.
+What the Summary tab says about one Student besides their name: their Groups,
+their Score, the Sessions they could have been at, their Attendance Counts with
+each one's share, and their Notes Log. Every figure is worked out from the
+Points Ledger and the Student's Adjustment, so the app rewrites the whole
+summary on each save. Nothing reads a total back out of it.
 _Avoid_: stats, report card
 
 **Attendance Counts**:
 How many Sessions one Student took each Attendance Status in — four numbers,
-one per Status. Shown either as those numbers or as each one's share of the
-Sessions the Student was counted in.
+one per Status, including any the teacher carried in as an Adjustment. Shown
+either as those numbers or as each one's share of the Sessions the Student was
+counted in.
 _Avoid_: tally, stats, attendance rate

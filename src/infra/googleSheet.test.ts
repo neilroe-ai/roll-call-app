@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { GoogleSheet, SHEET_TITLE, type IdStore } from './googleSheet';
 import { SheetsApi } from './sheetsApi';
 import { FetchStub, StubTokens } from './testFetch';
-import { ALL_TABS } from './rows';
+import { ALL_TABS, GROUPS_TAB, SUMMARY_TAB } from './rows';
 import { recordAttendance, type Session } from '../domain/session';
 
 const session: Session = { id: 'sess1', groupId: 'g1', takenAt: '2026-08-25T09:05:00+08:00' };
@@ -140,29 +140,86 @@ describe('GoogleSheet reads and writes', () => {
   });
 });
 
-describe('the summary columns', () => {
-  const studentsTab = (header: string[]) => ({
-    body: { values: [header, ['s1', 'Ana']] },
-  });
+describe('the summary tab', () => {
   const summary = [
-    { studentId: 's1', name: 'Ana', score: 2, counts: OUR_COUNTS, notes: ['2026-08-26: flu'] },
+    {
+      studentId: 's1',
+      name: 'Ana',
+      groupNames: ['Class 01'],
+      score: 2,
+      sessions: 1,
+      counts: OUR_COUNTS,
+      notes: ['2026-08-26: flu'],
+    },
   ];
 
-  it('writes them when the tab leaves them free', async () => {
-    const stub = new FetchStub([studentsTab(['Student ID', 'Name']), ok]);
+  it('writes the whole row, because the app owns every column of the tab', async () => {
+    const stub = new FetchStub([{ body: { values: [SUMMARY_TAB.header] } }, ok]);
     await build(stub, new MemoryIdStore('sheet1')).saveStudentSummaries(summary);
 
     const write = stub.calls[1];
     expect(write?.method).toBe('PUT');
-    expect(write?.body).toMatchObject({ values: [['2', '1', '0', '0', '0', '2026-08-26: flu']] });
+    expect(write?.url).toContain(encodeURIComponent('Summary!A2:N2'));
+    expect(write?.body).toMatchObject({
+      values: [
+        [
+          's1',
+          'Ana',
+          'Class 01',
+          '2',
+          '1',
+          '1',
+          '100%',
+          '0',
+          '0%',
+          '0',
+          '0%',
+          '0',
+          '0%',
+          '2026-08-26: flu',
+        ],
+      ],
+    });
   });
 
-  it('refuses to overwrite columns the teacher is already using', async () => {
-    const stub = new FetchStub([studentsTab(['Student ID', 'Name', 'Parent phone'])]);
-    const sheet = build(stub, new MemoryIdStore('sheet1'));
+  it('blanks a row left behind by a student who has gone from the register', async () => {
+    const existing = {
+      body: { values: [SUMMARY_TAB.header, ['s1', 'Ana'], ['s9', 'Gone', '', '3']] },
+    };
+    const stub = new FetchStub([existing, ok]);
+    await build(stub, new MemoryIdStore('sheet1')).saveStudentSummaries(summary);
 
-    await expect(sheet.saveStudentSummaries(summary)).rejects.toThrow(/its own columns in C:H/);
-    // Read only: nothing was written over the teacher's column.
-    expect(stub.calls.map((call) => call.method)).toEqual(['GET']);
+    const values = (stub.calls[1]?.body as { values: string[][] }).values;
+    expect(values).toHaveLength(2);
+    expect(values[1]?.every((cell) => cell === '')).toBe(true);
+  });
+
+  it('never touches the Students tab, which is the teacher’s', async () => {
+    const stub = new FetchStub([{ body: { values: [SUMMARY_TAB.header] } }, ok]);
+    await build(stub, new MemoryIdStore('sheet1')).saveStudentSummaries(summary);
+
+    expect(stub.calls.every((call) => !decodeURIComponent(call.url).includes('Students!'))).toBe(
+      true,
+    );
+  });
+});
+
+describe('the groups roster', () => {
+  it('writes only the two columns the app owns', async () => {
+    const grid = { body: { values: [GROUPS_TAB.header, ['s1', 'Ana', 'y']] } };
+    const stub = new FetchStub([grid, ok]);
+    await build(stub, new MemoryIdStore('sheet1')).syncGroupRoster([
+      { id: 's1', name: 'Ana' },
+      { id: 's2', name: 'Ben' },
+    ]);
+
+    const write = stub.calls[1];
+    expect(write?.url).toContain(encodeURIComponent('Groups!A2:B3'));
+    expect(write?.body).toMatchObject({
+      values: [
+        ['s1', 'Ana'],
+        ['s2', 'Ben'],
+      ],
+    });
   });
 });

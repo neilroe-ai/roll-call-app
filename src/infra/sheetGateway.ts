@@ -6,6 +6,7 @@
  * teacher renamed — so callers must handle rejection. Per ADR 0002 a failed
  * write must never block taking roll.
  */
+import type { Adjustment } from '../domain/adjustment';
 import type { BehaviorPoint } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { Group, Student } from '../domain/group';
@@ -17,6 +18,8 @@ export interface SheetGateway {
   ensureTabs(): Promise<void>;
 
   listStudents(): Promise<Student[]>;
+  /** Every Student's hand-typed Adjustment, keyed by student id. */
+  listAdjustments(): Promise<Map<string, Adjustment>>;
   listGroups(): Promise<Group[]>;
   listSessions(): Promise<Session[]>;
   listAttendance(): Promise<AttendanceRecord[]>;
@@ -25,15 +28,17 @@ export interface SheetGateway {
       before saving so a rewritten row keeps the Notes already there. */
   listStudentNotes(): Promise<Map<string, string[]>>;
 
-  appendStudent(student: Student): Promise<void>;
-  appendGroup(group: Group): Promise<void>;
+  /** Put a row in the Groups grid for every Student on the register, leaving
+      the teacher's membership columns untouched. Safe to call repeatedly. */
+  syncGroupRoster(students: readonly Student[]): Promise<void>;
+
   appendSession(session: Session): Promise<void>;
   /** Appended as one batch: a Session's records are written together. */
   appendAttendance(records: readonly AttendanceRecord[]): Promise<void>;
   appendBehavior(point: BehaviorPoint): Promise<void>;
 
-  /** Rewrite the worked-out columns of the Students tab. Every value is
-      derived, so writing the same summaries twice changes nothing. */
+  /** Rewrite the Summary tab. Every value is derived, so writing the same
+      summaries twice changes nothing. */
   saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
 
   /** Resolve a held point later. Throws if no such record exists. */

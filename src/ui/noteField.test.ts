@@ -155,10 +155,10 @@ test('the summary columns count the statuses the sheet holds', async () => {
   button('Dismiss').click();
   await saveRoll();
 
-  const rows = await sheet.rowsForTest('Students');
-  // Student ID, Name, Score, Present, Absent, Sick, Other, Notes
-  expect(rows[1]?.slice(0, 8)).toEqual(['s1', 'Amy', '1', '1', '0', '0', '0', '']);
-  expect(rows[2]?.slice(0, 8)).toEqual(['s2', 'Ben', '0', '0', '0', '1', '0', '']);
+  const rows = await sheet.rowsForTest('Summary');
+  // Student ID, Name, Groups, Score, Sessions, Present, Present %, Absent...
+  expect(rows[1]?.slice(0, 7)).toEqual(['s1', 'Amy', '3A', '1', '1', '1', '100%']);
+  expect(rows[2]?.slice(0, 7)).toEqual(['s2', 'Ben', '3A', '0', '1', '0', '0%']);
 });
 
 test.each(['Sick', 'Other'])('marking %s opens an empty note field', (status) => {
