@@ -108,13 +108,6 @@ export const ALL_TABS: readonly TabSchema[] = [
   BEHAVIOR_TAB,
 ];
 
-/** The header row to write: the app's headings in the cells that are blank,
-    whatever the teacher typed in the cells that are not. A heading they wrote
-    themselves is theirs to keep, even where the app wants that column. */
-export function mergeHeader(existing: SheetRow, tab: TabSchema): string[] {
-  return tab.header.map((heading, index) => optional(existing, index) ?? heading);
-}
-
 /** A row as the Sheets API returns it: unvalidated cells, short rows possible. */
 export type SheetRow = readonly unknown[];
 

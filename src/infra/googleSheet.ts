@@ -27,7 +27,6 @@ import {
   decodeStudent,
   decodeSummaryNotes,
   decodeTab,
-  mergeHeader,
   encodeAttendance,
   encodeBehavior,
   encodeSession,
@@ -110,19 +109,6 @@ export class GoogleSheet implements SheetGateway {
       this.spreadsheetId = null;
       return run(await this.sheetId());
     }
-  }
-
-  /** Name the columns the app writes. A Sheet made before the summary columns
-      existed gains their headings here — but only in cells that are blank, so
-      a heading the teacher typed is never overwritten. */
-  async ensureTabs(): Promise<void> {
-    await this.withSheet(async (id) => {
-      for (const tab of ALL_TABS) {
-        const values = await this.api.getValues(id, wholeTab(tab));
-        const merged = mergeHeader(values[0] ?? [], tab);
-        await this.api.updateValues(id, `${tab.title}!A1`, [merged]);
-      }
-    });
   }
 
   private async read<T>(tab: TabSchema, decode: (row: SheetRow, at: number) => T): Promise<T[]> {

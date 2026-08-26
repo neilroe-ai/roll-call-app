@@ -21,7 +21,6 @@ import {
   groupsGridColumns,
   isTicked,
   summaryBlock,
-  mergeHeader,
 } from './rows';
 
 describe('student rows', () => {
@@ -310,15 +309,5 @@ describe('the summary tab', () => {
   it('builds the block in the order it was given, because the app owns the tab', () => {
     const ben = { ...summary, studentId: 's2', name: 'Ben' };
     expect(summaryBlock([summary, ben]).map((row) => row[0])).toEqual(['s1', 's2']);
-  });
-});
-
-describe('mergeHeader', () => {
-  it('fills in the headings the sheet has not got', () => {
-    expect(mergeHeader(['Student ID', 'Name'], STUDENTS_TAB)).toEqual(STUDENTS_TAB.header);
-  });
-
-  it('keeps a heading the teacher typed, even where the app wants that column', () => {
-    expect(mergeHeader(['ID', 'Full name'], STUDENTS_TAB).slice(0, 2)).toEqual(['ID', 'Full name']);
   });
 });

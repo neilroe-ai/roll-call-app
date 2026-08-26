@@ -83,10 +83,6 @@ export class FakeSheet implements SheetGateway {
     return rows;
   }
 
-  ensureTabs(): Promise<void> {
-    return Promise.resolve();
-  }
-
   listStudents(): Promise<Student[]> {
     return Promise.resolve(decodeTab(this.rowsOf(STUDENTS_TAB.title), decodeStudent));
   }

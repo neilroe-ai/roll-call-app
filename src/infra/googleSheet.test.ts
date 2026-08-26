@@ -31,9 +31,10 @@ const build = (stub: FetchStub, store: IdStore) =>
 
 describe('GoogleSheet first run', () => {
   it('creates the Sheet with all five tabs and writes their headers', async () => {
-    const stub = new FetchStub([...createReplies, ok]);
+    const stub = new FetchStub([...createReplies, { body: { values: [] } }]);
     const store = new MemoryIdStore();
-    await build(stub, store).ensureTabs();
+    // Any read triggers the create; nothing else in the app asks for one.
+    await build(stub, store).listStudents();
 
     const created = stub.calls[0]?.body as { properties: { title: string }; sheets: unknown[] };
     expect(created.properties.title).toBe(SHEET_TITLE);

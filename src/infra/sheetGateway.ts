@@ -14,9 +14,6 @@ import type { AttendanceRecord, Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
 
 export interface SheetGateway {
-  /** Create any missing tabs and header rows. Safe to call repeatedly. */
-  ensureTabs(): Promise<void>;
-
   listStudents(): Promise<Student[]>;
   /** Every Student's hand-typed Adjustment, keyed by student id. */
   listAdjustments(): Promise<Map<string, Adjustment>>;
