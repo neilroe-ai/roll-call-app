@@ -9,7 +9,8 @@
  * Every action leaves the state consistent before it returns, and reports the
  * change once, through the listener given to the constructor.
  */
-import { calendarDateOf, awardBehavior, behaviorNote, signOf } from '../domain/behavior';
+import { calendarDateOf, awardBehavior, signOf } from '../domain/behavior';
+import { behaviorText, noteLine } from '../domain/notesLog';
 import type { CalendarDate } from '../domain/behavior';
 import { initialPointState, type AttendanceStatus, type BehaviorKind } from '../domain/points';
 import type { Group, Student } from '../domain/group';
@@ -198,12 +199,10 @@ export class AppModel {
         attendance: data.ledger.attendance,
         behavior: [...data.ledger.behavior, point],
       };
-      // Only an explained point earns a line in the Notes Log. The bare fact of
-      // the point is already in the Behavior tab.
-      const added =
-        point.note === undefined
-          ? undefined
-          : { on: today, byStudent: new Map([[student.id, behaviorNote(kind, point.note)]]) };
+      const added = {
+        on: today,
+        byStudent: new Map([[student.id, behaviorText(kind, point.note)]]),
+      };
       await this.sheet.saveBehavior(point, summarize({ ...data, ledger }, added));
       await this.reload();
       this.set({ message: { text: `${signOf(kind)} for ${student.name}.`, isError: false } });
@@ -217,15 +216,17 @@ export class AppModel {
   async saveNote(student: Student, text: string): Promise<void> {
     const data = this.current.data;
     if (!data) return;
-    // Nothing written, nothing to save: closing the field is the whole action.
-    if (text.trim() === '') {
+    // Nothing worth writing means nothing to save: closing the field is the
+    // whole action. The Notes Log decides what counts as nothing.
+    const today = this.today();
+    if (noteLine(today, text) === undefined) {
       this.set({ noteFor: null });
       return;
     }
     this.set({ noteFor: null, busy: true, message: { text: 'Saving…', isError: false } });
     try {
       await this.sheet.saveStudentSummaries(
-        summarize(data, { on: this.today(), byStudent: new Map([[student.id, text]]) }),
+        summarize(data, { on: today, byStudent: new Map([[student.id, text]]) }),
       );
       await this.reload();
       this.set({ message: { text: 'Note saved.', isError: false } });

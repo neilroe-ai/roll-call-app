@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noteEntry, sessionsFor, shareOf, summarize, countsFor } from './studentSummary';
+import { sessionsFor, shareOf, summarize, countsFor } from './studentSummary';
 import type { Group, Student } from './group';
 import type { PointsLedger } from './score';
 import type { AttendanceRecord, Session } from './session';
@@ -51,12 +51,6 @@ describe('countsFor', () => {
       sick: 0,
       other: 0,
     });
-  });
-});
-
-describe('noteEntry', () => {
-  it('dates the note and trims it', () => {
-    expect(noteEntry('2026-08-26', '  flu  ')).toBe('2026-08-26: flu');
   });
 });
 

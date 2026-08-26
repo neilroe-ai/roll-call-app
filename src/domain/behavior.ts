@@ -39,9 +39,3 @@ export function signOf(kind: BehaviorKind): string {
   const points = behaviorPoints(kind);
   return points > 0 ? `+${String(points)}` : String(points);
 }
-
-/** A Behavior Point's line in a Notes Log. The sign goes first, so a log read
-    down the cell shows what the Note was explaining. */
-export function behaviorNote(kind: BehaviorKind, note: string): string {
-  return `${signOf(kind)} ${note.trim()}`;
-}

@@ -17,6 +17,7 @@ import { emptyCounts, type AttendanceCounts } from './points';
 import { scoreFor, type PointsLedger } from './score';
 import type { Session } from './session';
 import type { Snapshot } from './snapshot';
+import { addLine, noteLine, type NotesLog } from './notesLog';
 
 export type { AttendanceCounts };
 
@@ -31,7 +32,7 @@ export interface StudentSummary {
   counts: AttendanceCounts;
   /** The whole Notes Log, oldest first — what the Sheet should hold after this
       save, not just what was added. */
-  notes: string[];
+  notes: NotesLog;
 }
 
 /** One Student's Attendance Counts: what the Ledger recorded, plus whatever the
@@ -90,17 +91,13 @@ export function shareText(count: number, sessions: number): string {
   return `${String(shareOf(count, sessions))}%`;
 }
 
-/** One line of a Notes Log: the date, then what the teacher wrote. Dated so a
-    list of them stays readable once it is several lessons long. */
-export function noteEntry(date: CalendarDate, note: string): string {
-  return `${date}: ${note.trim()}`;
-}
-
 /** Notes written during a roll call, keyed by student id, and the date they
     were written on. Left out when nothing new is being added. */
 export interface AddedNotes {
   on: CalendarDate;
-  byStudent: ReadonlyMap<string, string>;
+  /** What each Student's new Note says. A Student with nothing to add — or
+      nothing worth adding — maps to `undefined`, and gains no line. */
+  byStudent: ReadonlyMap<string, string | undefined>;
 }
 
 /**
@@ -115,10 +112,10 @@ export function summarize(input: Snapshot, added?: AddedNotes): StudentSummary[]
   return input.students.map((student) => {
     const adjustment = adjustmentFor(student.id, input.adjustments);
     const addition = added?.byStudent.get(student.id);
-    const notes = [...(input.notes.get(student.id) ?? [])];
-    if (added !== undefined && addition !== undefined && addition.trim() !== '') {
-      notes.push(noteEntry(added.on, addition));
-    }
+    const notes =
+      added === undefined
+        ? (input.notes.get(student.id) ?? [])
+        : addLine(input.notes.get(student.id) ?? [], noteLine(added.on, addition));
     return {
       studentId: student.id,
       name: student.name,
