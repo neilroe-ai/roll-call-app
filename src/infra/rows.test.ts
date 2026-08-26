@@ -15,6 +15,7 @@ import {
   STUDENTS_TAB,
   SUMMARY_TAB,
   encodeSummary,
+  encodeStudent,
   decodeNotes,
   decodeSummaryNotes,
   groupIdForColumn,
@@ -309,5 +310,25 @@ describe('the summary tab', () => {
   it('builds the block in the order it was given, because the app owns the tab', () => {
     const ben = { ...summary, studentId: 's2', name: 'Ben' };
     expect(summaryBlock([summary, ben]).map((row) => row[0])).toEqual(['s1', 's2']);
+  });
+});
+
+describe('encodeStudent', () => {
+  const student = { id: 's1', name: 'Ana' };
+
+  it('writes only the two columns the teacher fills for most students', () => {
+    expect(encodeStudent(student)).toEqual(['s1', 'Ana']);
+  });
+
+  it('writes an Adjustment in the column order the Students tab reads back', () => {
+    const adjustment = {
+      points: 4,
+      counts: { present: 3, absent: 2, sick: 1, other: 0 },
+    };
+
+    const row = encodeStudent(student, adjustment);
+
+    expect(row).toEqual(['s1', 'Ana', '4', '3', '2', '1', '0']);
+    expect(decodeAdjustment(row, 2)).toEqual(adjustment);
   });
 });

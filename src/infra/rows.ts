@@ -224,6 +224,16 @@ export function summaryBlock(summaries: readonly StudentSummary[]): string[][] {
   return summaries.map(encodeSummary);
 }
 
+/** One Students row as the teacher would have typed it, Adjustment included.
+    The app never writes this row — she owns it — but the fake Sheet and any
+    test that seeds one need the column order to come from here, not from a
+    second hand-counted copy. */
+export function encodeStudent(student: Student, adjustment?: Adjustment): string[] {
+  if (adjustment === undefined) return [student.id, student.name];
+  const counts = STATUSES.map((status) => String(adjustment.counts[status]));
+  return [student.id, student.name, String(adjustment.points), ...counts];
+}
+
 export function decodeStudent(row: SheetRow, at: number): Student {
   const tab = STUDENTS_TAB.title;
   return { id: required(row, 0, 'id', tab, at), name: required(row, 1, 'name', tab, at) };
@@ -414,8 +424,10 @@ export function findAttendanceRow(
   return values.findIndex((row, at) => at > 0 && row[0] === sessionId && row[1] === studentId);
 }
 
-/** The A1 column holding the Point of an Attendance row. */
-export const POINT_COLUMN = 'D';
+/** Where the Point sits in an Attendance row, as an index and as the A1 column
+    the Sheets API wants. One fact, two spellings, so no caller counts cells. */
+export const POINT_INDEX = 3;
+export const POINT_COLUMN = String.fromCharCode('A'.charCodeAt(0) + POINT_INDEX);
 
 /** Decode a whole tab's values, skipping the header row. Row numbers in errors
     are 1-based Sheet rows, so they match what the teacher sees. */

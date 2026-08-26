@@ -16,7 +16,7 @@ describe('FakeSheet', () => {
   it('returns what was seeded', async () => {
     const sheet = new FakeSheet({
       students: [{ id: 's1', name: 'Ana' }],
-      groups: [{ id: 'g1', name: '3A', studentIds: ['s1'] }],
+      groups: [{ id: 'G1', name: '3A', studentIds: ['s1'] }],
     });
     expect(await sheet.listStudents()).toEqual([{ id: 's1', name: 'Ana' }]);
     expect((await sheet.listGroups())[0]?.studentIds).toEqual(['s1']);
@@ -78,5 +78,27 @@ describe('FakeSheet', () => {
     const sheet = new FakeSheet();
     await sheet.appendSession(session);
     expect(await sheet.listSessions()).toEqual([session]);
+  });
+});
+
+describe('a seeded group', () => {
+  it('refuses an id the Groups grid could never give it', () => {
+    // 'g1' would decode back as 'G1', so a Session pointing at 'g1' would
+    // silently count nothing. Fail at the seed instead.
+    expect(() => new FakeSheet({ groups: [{ id: 'g1', name: '3A', studentIds: [] }] })).toThrow(
+      'must have id G1',
+    );
+  });
+
+  it('takes the id its column position mints', async () => {
+    const sheet = new FakeSheet({
+      students: [{ id: 's1', name: 'Ana' }],
+      groups: [
+        { id: 'G1', name: '3A', studentIds: ['s1'] },
+        { id: 'G2', name: 'Reading circle', studentIds: [] },
+      ],
+    });
+
+    expect((await sheet.listGroups()).map((group) => group.id)).toEqual(['G1', 'G2']);
   });
 });

@@ -12,7 +12,7 @@ const STUDENTS = [
   { id: 's1', name: 'Amy' },
   { id: 's2', name: 'Ben' },
 ];
-const GROUP = { id: 'g1', name: '3A', studentIds: ['s1', 's2'] };
+const GROUP = { id: 'G1', name: '3A', studentIds: ['s1', 's2'] };
 
 const clock: Clock = {
   now: () => new Date(2026, 7, 26, 9, 5),

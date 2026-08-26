@@ -27,9 +27,12 @@ import {
   encodeAttendance,
   encodeBehavior,
   encodeSession,
+  encodeStudent,
   findAttendanceRow,
+  groupIdForColumn,
   groupsGridColumns,
   summaryBlock,
+  POINT_INDEX,
   type SheetRow,
 } from './rows';
 import type { SheetGateway } from './sheetGateway';
@@ -53,7 +56,7 @@ export class FakeSheet implements SheetGateway {
     const groups = seed.groups ?? [];
     this.tabs.set(STUDENTS_TAB.title, [
       STUDENTS_TAB.header,
-      ...students.map((student) => studentRow(student, seed.adjustments?.get(student.id))),
+      ...students.map((student) => encodeStudent(student, seed.adjustments?.get(student.id))),
     ]);
     this.tabs.set(GROUPS_TAB.title, groupGrid(students, groups));
     this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header]);
@@ -147,29 +150,26 @@ export class FakeSheet implements SheetGateway {
       return Promise.reject(new Error(`no attendance record for ${studentId} in ${sessionId}`));
     }
     const found = rows[index] as SheetRow;
-    rows[index] = [...found.slice(0, 3), state, ...found.slice(4)];
+    rows[index] = [...found.slice(0, POINT_INDEX), state, ...found.slice(POINT_INDEX + 1)];
     return Promise.resolve();
   }
 }
 
-/** One Students row: what the teacher typed, including any Adjustment. */
-function studentRow(student: Student, adjustment?: Adjustment): string[] {
-  if (adjustment === undefined) return [student.id, student.name];
-  return [
-    student.id,
-    student.name,
-    String(adjustment.points),
-    String(adjustment.counts.present),
-    String(adjustment.counts.absent),
-    String(adjustment.counts.sick),
-    String(adjustment.counts.other),
-  ];
-}
-
 /** The Groups grid a set of Groups would be marked up as: a column per Group,
-    a "y" wherever a Student belongs to one. */
+    a "y" wherever a Student belongs to one.
+ *
+ * A Group's id is its column position, so a seed may not choose one: a seed
+ * saying `g1` where the grid can only ever say `G1` would decode back as a
+ * different Group, and every Session pointing at it would silently count zero.
+ * Better to fail here than to pass a test on data the Sheet cannot hold. */
 function groupGrid(students: readonly Student[], groups: readonly Group[]): SheetRow[] {
-  const header = ['Student ID', 'Name', ...groups.map((group) => group.name)];
+  groups.forEach((group, at) => {
+    const expected = groupIdForColumn(GROUPS_TAB.header.length + at);
+    if (group.id !== expected) {
+      throw new Error(`seeded group "${group.name}" must have id ${expected}, got ${group.id}`);
+    }
+  });
+  const header = [...GROUPS_TAB.header, ...groups.map((group) => group.name)];
   const rows = students.map((student) => [
     student.id,
     student.name,
