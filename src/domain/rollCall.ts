@@ -27,7 +27,11 @@ export interface RollCall {
 
 /** Begin marking a Group. Ids with no matching Student are left out of the roll
     rather than shown as a blank row. */
-export function beginRollCall(session: Session, group: Group, students: Student[]): RollCall {
+export function beginRollCall(
+  session: Session,
+  group: Group,
+  students: readonly Student[],
+): RollCall {
   return { session, roll: membersOf(group, students), marks: new Map(), notes: new Map() };
 }
 

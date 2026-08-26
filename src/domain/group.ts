@@ -20,7 +20,7 @@ export function isMember(group: Group, studentId: string): boolean {
 
 /** The Students of a Group, in the order the Group lists them.
     Ids with no matching Student are skipped. */
-export function membersOf(group: Group, students: Student[]): Student[] {
+export function membersOf(group: Group, students: readonly Student[]): Student[] {
   const byId = new Map(students.map((student) => [student.id, student]));
   return group.studentIds
     .map((id) => byId.get(id))

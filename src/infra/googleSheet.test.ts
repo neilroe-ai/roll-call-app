@@ -195,6 +195,26 @@ describe('the summary tab', () => {
     expect(values[1]?.every((cell) => cell === '')).toBe(true);
   });
 
+  it('clears every row when there are no students left to summarise', async () => {
+    const existing = {
+      body: { values: [SUMMARY_TAB.header, ['s1', 'Ana', '', '2'], ['s2', 'Ben', '', '1']] },
+    };
+    const stub = new FetchStub([existing, ok]);
+    await build(stub, new MemoryIdStore('sheet1')).saveStudentSummaries([]);
+
+    // The app owns the whole tab: an empty list must leave nothing behind.
+    const values = (stub.calls[1]?.body as { values: string[][] }).values;
+    expect(values).toHaveLength(2);
+    expect(values.every((row) => row.every((cell) => cell === ''))).toBe(true);
+  });
+
+  it('writes nothing when there is nothing to write and nothing to clear', async () => {
+    const stub = new FetchStub([{ body: { values: [SUMMARY_TAB.header] } }]);
+    await build(stub, new MemoryIdStore('sheet1')).saveStudentSummaries([]);
+
+    expect(stub.calls).toHaveLength(1);
+  });
+
   it('never touches the Students tab, which is the teacher’s', async () => {
     const stub = new FetchStub([{ body: { values: [SUMMARY_TAB.header] } }, ok]);
     await build(stub, new MemoryIdStore('sheet1')).saveStudentSummaries(summary);

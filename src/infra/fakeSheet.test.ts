@@ -102,3 +102,57 @@ describe('a seeded group', () => {
     expect((await sheet.listGroups()).map((group) => group.id)).toEqual(['G1', 'G2']);
   });
 });
+
+describe('the one read', () => {
+  it('hands back everything the Sheet holds in one Snapshot', async () => {
+    const sheet = new FakeSheet({
+      students: [{ id: 's1', name: 'Ana' }],
+      groups: [{ id: 'G1', name: '3A', studentIds: ['s1'] }],
+    });
+
+    const snapshot = await sheet.read();
+
+    expect(snapshot.students).toEqual([{ id: 's1', name: 'Ana' }]);
+    expect(snapshot.groups[0]?.name).toBe('3A');
+    expect(snapshot.ledger).toEqual({ attendance: [], behavior: [] });
+    expect(snapshot.sessions).toEqual([]);
+  });
+
+  it('gives a new Student a row in the Groups grid before handing it back', async () => {
+    const sheet = new FakeSheet({ students: [{ id: 's1', name: 'Ana' }] });
+    await sheet.read();
+
+    // Without a row of her own, the teacher has nothing to tick.
+    const grid = await sheet.rowsForTest('Groups');
+    expect(grid[1]).toEqual(['s1', 'Ana']);
+  });
+});
+
+describe('saving a behavior point', () => {
+  it('writes the point and the summary it changes', async () => {
+    const sheet = new FakeSheet({ students: [{ id: 's1', name: 'Ana' }] });
+    const point = {
+      id: 'b1',
+      studentId: 's1',
+      date: '2026-08-26',
+      kind: 'positive',
+      note: 'helped tidy up',
+    } as const;
+
+    await sheet.saveBehavior(point, [
+      {
+        studentId: 's1',
+        name: 'Ana',
+        groupNames: [],
+        score: 1,
+        sessions: 0,
+        counts: { present: 0, absent: 0, sick: 0, other: 0 },
+        notes: ['2026-08-26: +1 helped tidy up'],
+      },
+    ]);
+
+    const snapshot = await sheet.read();
+    expect(snapshot.ledger.behavior).toEqual([point]);
+    expect(snapshot.notes.get('s1')).toEqual(['2026-08-26: +1 helped tidy up']);
+  });
+});

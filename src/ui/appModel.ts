@@ -12,25 +12,13 @@
 import { calendarDateOf, awardBehavior, behaviorNote, signOf } from '../domain/behavior';
 import type { CalendarDate } from '../domain/behavior';
 import { initialPointState, type AttendanceStatus, type BehaviorKind } from '../domain/points';
-import type { Adjustment } from '../domain/adjustment';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
+import type { Snapshot } from '../domain/snapshot';
 import type { PointsLedger } from '../domain/score';
 import { beginRollCall, mark, recordsToSave, setNote, type RollCall } from '../domain/rollCall';
 import { summarize, type StudentSummary } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
-
-/** Everything the Sheet told us, as one read left it. */
-export interface Loaded {
-  students: Student[];
-  groups: Group[];
-  sessions: Session[];
-  ledger: PointsLedger;
-  /** The teacher's hand-typed corrections, keyed by student id. */
-  adjustments: Map<string, Adjustment>;
-  /** Each Student's Notes Log as the Sheet holds it. */
-  notes: Map<string, string[]>;
-}
 
 export type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes' | 'behavior';
 
@@ -49,7 +37,7 @@ export interface Message {
 /** Everything on screen, in one place. */
 export interface AppState {
   view: View;
-  data: Loaded | null;
+  data: Snapshot | null;
   rollCall: RollCall | null;
   /** The Student whose Note field is open, if any. Only one at a time. */
   noteFor: string | null;
@@ -206,7 +194,6 @@ export class AppModel {
 
     this.set({ pendingBehavior: null, busy: true, message: { text: 'Saving…', isError: false } });
     try {
-      await this.sheet.appendBehavior(point);
       const ledger: PointsLedger = {
         attendance: data.ledger.attendance,
         behavior: [...data.ledger.behavior, point],
@@ -217,7 +204,7 @@ export class AppModel {
         point.note === undefined
           ? undefined
           : { on: today, byStudent: new Map([[student.id, behaviorNote(kind, point.note)]]) };
-      await this.sheet.saveStudentSummaries(summarize({ ...data, ledger }, added));
+      await this.sheet.saveBehavior(point, summarize({ ...data, ledger }, added));
       await this.reload();
       this.set({ message: { text: `${signOf(kind)} for ${student.name}.`, isError: false } });
     } catch (error) {
@@ -274,30 +261,7 @@ export class AppModel {
 
   private async reload(): Promise<void> {
     try {
-      const students = await this.sheet.listStudents();
-      // Every Student needs a row in the Groups grid before the teacher can
-      // tick them into anything, so the Students tab is pushed across first.
-      await this.sheet.syncGroupsGrid(students);
-      const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
-        this.sheet.listGroups(),
-        this.sheet.listSessions(),
-        this.sheet.listAttendance(),
-        this.sheet.listBehavior(),
-        this.sheet.listAdjustments(),
-        this.sheet.listNotesLogs(),
-      ]);
-      this.set({
-        data: {
-          students,
-          groups,
-          sessions,
-          ledger: { attendance, behavior },
-          adjustments,
-          notes,
-        },
-        message: null,
-        busy: false,
-      });
+      this.set({ data: await this.sheet.read(), message: null, busy: false });
     } catch (error) {
       this.fail(error);
     }

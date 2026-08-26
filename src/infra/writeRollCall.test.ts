@@ -37,8 +37,8 @@ describe('writeRollCall', () => {
     const sheet = new FakeSheet();
     await writeRollCall(sheet, marked(), []);
 
-    expect(await sheet.listAttendance()).toHaveLength(2);
-    expect(await sheet.listSessions()).toEqual([session]);
+    expect((await sheet.read()).ledger.attendance).toHaveLength(2);
+    expect((await sheet.read()).sessions).toEqual([session]);
   });
 
   it('writes the records before the session', async () => {
@@ -47,8 +47,8 @@ describe('writeRollCall', () => {
 
     // Points survive a half-finished save; the missing Session row does not
     // cost the class anything.
-    expect(await sheet.listAttendance()).toHaveLength(2);
-    expect(await sheet.listSessions()).toEqual([]);
+    expect((await sheet.read()).ledger.attendance).toHaveLength(2);
+    expect((await sheet.read()).sessions).toEqual([]);
   });
 
   it('a retry after a failed session write saves each student once', async () => {
@@ -57,11 +57,11 @@ describe('writeRollCall', () => {
 
     // The teacher taps Save again. What already landed is read back from the
     // Sheet, so the records are not appended a second time.
-    const working = new FakeSheet({ attendance: await sheet.listAttendance() });
+    const working = new FakeSheet({ attendance: [...(await sheet.read()).ledger.attendance] });
     await writeRollCall(working, marked(), []);
 
-    expect(await working.listAttendance()).toHaveLength(2);
-    expect(await working.listSessions()).toEqual([session]);
+    expect((await working.read()).ledger.attendance).toHaveLength(2);
+    expect((await working.read()).sessions).toEqual([session]);
   });
 
   it('a retry after a failed summary write adds no second session row', async () => {
@@ -69,13 +69,13 @@ describe('writeRollCall', () => {
     await expect(writeRollCall(sheet, marked(), [])).rejects.toThrow();
 
     const working = new FakeSheet({
-      attendance: await sheet.listAttendance(),
-      sessions: await sheet.listSessions(),
+      attendance: [...(await sheet.read()).ledger.attendance],
+      sessions: [...(await sheet.read()).sessions],
     });
     await writeRollCall(working, marked(), []);
 
-    expect(await working.listAttendance()).toHaveLength(2);
-    expect(await working.listSessions()).toEqual([session]);
+    expect((await working.read()).ledger.attendance).toHaveLength(2);
+    expect((await working.read()).sessions).toEqual([session]);
   });
 
   it('writing the same roll call twice changes nothing', async () => {
@@ -83,7 +83,7 @@ describe('writeRollCall', () => {
     await writeRollCall(sheet, marked(), []);
     await writeRollCall(sheet, marked(), []);
 
-    expect(await sheet.listAttendance()).toHaveLength(2);
-    expect(await sheet.listSessions()).toEqual([session]);
+    expect((await sheet.read()).ledger.attendance).toHaveLength(2);
+    expect((await sheet.read()).sessions).toEqual([session]);
   });
 });

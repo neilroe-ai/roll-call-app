@@ -99,6 +99,14 @@ Points Ledger and the Student's Adjustment, so the app rewrites the whole
 summary on each save. Nothing reads a total back out of it.
 _Avoid_: stats, report card
 
+**Snapshot**:
+Everything the app read from the Sheet in one go: the Students, the Groups, the
+Sessions, the Points Ledger, every Adjustment and every Notes Log. It is a
+moment in time, not a live view — the Sheet can change underneath it, and the
+teacher can edit her own columns at any time — so the app takes a fresh one
+after every write rather than editing the one it holds.
+_Avoid_: state, cache, model
+
 **Attendance Counts**:
 How many Sessions one Student took each Attendance Status in — four numbers,
 one per Status, including any the teacher carried in as an Adjustment. Shown

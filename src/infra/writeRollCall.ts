@@ -18,14 +18,18 @@
  */
 import { recordsToSave, type RollCall } from '../domain/rollCall';
 import type { StudentSummary } from '../domain/studentSummary';
-import type { SheetGateway } from './sheetGateway';
+import type { AttendanceRecord, Session } from '../domain/session';
 
 /** What committing a roll call needs of the Sheet: the two reads that say what
-    already landed, and the three writes. */
-export type RollCallWrites = Pick<
-  SheetGateway,
-  'listAttendance' | 'listSessions' | 'appendAttendance' | 'appendSession' | 'saveStudentSummaries'
->;
+    already landed, and the three writes. Not part of the port — these are the
+    adapters' own parts, shared so the ordering is written once. */
+export interface RollCallWrites {
+  listAttendance(): Promise<AttendanceRecord[]>;
+  listSessions(): Promise<Session[]>;
+  appendAttendance(records: readonly AttendanceRecord[]): Promise<void>;
+  appendSession(session: Session): Promise<void>;
+  saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
+}
 
 export async function writeRollCall(
   sheet: RollCallWrites,

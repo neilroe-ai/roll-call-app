@@ -39,6 +39,7 @@ import {
 } from './rows';
 import { SheetsApiError, type SheetsApi } from './sheetsApi';
 import type { SheetGateway } from './sheetGateway';
+import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
 import type { RollCall } from '../domain/rollCall';
 
@@ -113,13 +114,37 @@ export class GoogleSheet implements SheetGateway {
     }
   }
 
-  private async read<T>(tab: TabSchema, decode: (row: SheetRow, at: number) => T): Promise<T[]> {
+  private async readTab<T>(tab: TabSchema, decode: (row: SheetRow, at: number) => T): Promise<T[]> {
     const values = await this.withSheet((id) => this.api.getValues(id, wholeTab(tab)));
     return decodeTab(values, decode);
   }
 
+  /** Everything the Sheet holds. The Groups Grid is squared up against the
+      Students tab first: a Student with no row there cannot be ticked into any
+      Group, so the teacher would have no way to add them. */
+  async read(): Promise<Snapshot> {
+    const students = await this.listStudents();
+    await this.syncGroupsGrid(students);
+    const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
+      this.listGroups(),
+      this.listSessions(),
+      this.listAttendance(),
+      this.listBehavior(),
+      this.listAdjustments(),
+      this.listNotesLogs(),
+    ]);
+    return {
+      students,
+      groups,
+      sessions,
+      ledger: { attendance, behavior },
+      adjustments,
+      notes,
+    };
+  }
+
   listStudents(): Promise<Student[]> {
-    return this.read(STUDENTS_TAB, decodeStudent);
+    return this.readTab(STUDENTS_TAB, decodeStudent);
   }
 
   /** The Groups grid is read whole, not row by row: a Group is a column, so no
@@ -135,15 +160,15 @@ export class GoogleSheet implements SheetGateway {
   }
 
   listSessions(): Promise<Session[]> {
-    return this.read(SESSIONS_TAB, decodeSession);
+    return this.readTab(SESSIONS_TAB, decodeSession);
   }
 
   listAttendance(): Promise<AttendanceRecord[]> {
-    return this.read(ATTENDANCE_TAB, decodeAttendance);
+    return this.readTab(ATTENDANCE_TAB, decodeAttendance);
   }
 
   listBehavior(): Promise<BehaviorPoint[]> {
-    return this.read(BEHAVIOR_TAB, decodeBehavior);
+    return this.readTab(BEHAVIOR_TAB, decodeBehavior);
   }
 
   async listNotesLogs(): Promise<Map<string, string[]>> {
@@ -190,6 +215,11 @@ export class GoogleSheet implements SheetGateway {
     await this.append(BEHAVIOR_TAB, [encodeBehavior(point)]);
   }
 
+  async saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
+    await this.appendBehavior(point);
+    await this.saveStudentSummaries(summaries);
+  }
+
   /**
    * Rewrite the Summary tab in one call.
    *
@@ -208,6 +238,7 @@ export class GoogleSheet implements SheetGateway {
       const blank = Array.from({ length: width }, () => '');
       const rows = [...block];
       for (let index = rows.length; index < existing.length - 1; index += 1) rows.push([...blank]);
+      // Nothing to write and nothing already there: the tab is already right.
       if (rows.length === 0) return;
       const range = `${SUMMARY_TAB.title}!A2:${SUMMARY_LAST_COLUMN}${String(rows.length + 1)}`;
       await this.api.updateValues(id, range, rows);

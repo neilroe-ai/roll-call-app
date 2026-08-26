@@ -12,10 +12,11 @@
  */
 import { adjustmentFor, type Adjustment } from './adjustment';
 import type { CalendarDate } from './behavior';
-import { isMember, type Group, type Student } from './group';
+import { isMember, type Group } from './group';
 import { emptyCounts, type AttendanceCounts } from './points';
 import { scoreFor, type PointsLedger } from './score';
 import type { Session } from './session';
+import type { Snapshot } from './snapshot';
 
 export type { AttendanceCounts };
 
@@ -103,23 +104,6 @@ export interface AddedNotes {
 }
 
 /**
- * Everything a summary is worked out from.
- *
- * Bundled rather than passed one by one: the app already holds these together
- * as the Sheet it has read, and a summary needs all of them or none.
- */
-export interface SummaryInput {
-  students: readonly Student[];
-  groups: readonly Group[];
-  sessions: readonly Session[];
-  ledger: PointsLedger;
-  /** The teacher's hand-typed corrections, keyed by student id. */
-  adjustments: ReadonlyMap<string, Adjustment>;
-  /** The Notes Log already in the Sheet, keyed by student id. */
-  notes: ReadonlyMap<string, readonly string[]>;
-}
-
-/**
  * The rows to write back to the Summary tab.
  *
  * `ledger` must already include the Attendance Records being saved, and `notes`
@@ -127,7 +111,7 @@ export interface SummaryInput {
  * so writing it twice cannot double a Note or a count. Called with no `added`,
  * it reports what the Ledger already says.
  */
-export function summarize(input: SummaryInput, added?: AddedNotes): StudentSummary[] {
+export function summarize(input: Snapshot, added?: AddedNotes): StudentSummary[] {
   return input.students.map((student) => {
     const adjustment = adjustmentFor(student.id, input.adjustments);
     const addition = added?.byStudent.get(student.id);

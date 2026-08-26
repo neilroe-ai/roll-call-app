@@ -21,7 +21,7 @@ export interface ScoreboardEntry {
     sees that disagreed with the Score on the Summary tab would be read as the
     app losing points. */
 export function scoreboard(
-  students: Student[],
+  students: readonly Student[],
   ledger: PointsLedger,
   adjustments: ReadonlyMap<string, Adjustment>,
 ): ScoreboardEntry[] {

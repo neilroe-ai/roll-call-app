@@ -23,10 +23,10 @@ import {
   systemClock,
   type AppState,
   type Clock,
-  type Loaded,
   type PendingBehavior,
   type View,
 } from './appModel';
+import type { Snapshot } from '../domain/snapshot';
 
 export { systemClock, type Clock } from './appModel';
 
@@ -134,7 +134,7 @@ export class App {
     return nav;
   }
 
-  private renderGroups(data: Loaded): HTMLElement[] {
+  private renderGroups(data: Snapshot): HTMLElement[] {
     // A Group the teacher has named but not filled in is a real Group, and the
     // grid still shows it. There is no roll to take in it, so Take roll does
     // not offer it.
@@ -301,7 +301,7 @@ export class App {
 
   /** Every Student's Score and how their Attendance Statuses fell out — the
       Students tab, readable without opening the Sheet. */
-  private renderSummary(data: Loaded, asShare: boolean): HTMLElement[] {
+  private renderSummary(data: Snapshot, asShare: boolean): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
     const summaries = summarize(data);
     const heading = element('h1', undefined, 'Summary');
@@ -347,7 +347,7 @@ export class App {
 
   /** Awarding and subtracting Behavior Points. A point is chosen first and
       written second, so the teacher can explain it before it counts. */
-  private renderBehavior(data: Loaded, pendingBehavior: PendingBehavior | null): HTMLElement[] {
+  private renderBehavior(data: Snapshot, pendingBehavior: PendingBehavior | null): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Behavior');
     const hint = element('p', 'muted', 'Award or subtract a point, and say why.');
@@ -399,7 +399,7 @@ export class App {
 
   /** Every Student's Notes Log, and a way to add to any of them. This is where
       a Note gets written when no roll call is being taken. */
-  private renderNotes(data: Loaded, noteFor: string | null): HTMLElement[] {
+  private renderNotes(data: Snapshot, noteFor: string | null): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Notes');
     const hint = element('p', 'muted', 'Add a note about any student, any time.');
@@ -435,7 +435,7 @@ export class App {
     return [heading, hint, list];
   }
 
-  private renderScoreboard(data: Loaded): HTMLElement[] {
+  private renderScoreboard(data: Snapshot): HTMLElement[] {
     const entries = scoreboard(data.students, data.ledger, data.adjustments);
     if (entries.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Scoreboard');

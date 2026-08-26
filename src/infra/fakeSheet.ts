@@ -36,6 +36,7 @@ import {
   type SheetRow,
 } from './rows';
 import type { SheetGateway } from './sheetGateway';
+import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
 import type { RollCall } from '../domain/rollCall';
 
@@ -86,6 +87,20 @@ export class FakeSheet implements SheetGateway {
     const rows = this.tabs.get(title);
     if (rows === undefined) throw new Error(`no such tab: ${title}`);
     return rows;
+  }
+
+  async read(): Promise<Snapshot> {
+    const students = await this.listStudents();
+    await this.syncGroupsGrid(students);
+    const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
+      this.listGroups(),
+      this.listSessions(),
+      this.listAttendance(),
+      this.listBehavior(),
+      this.listAdjustments(),
+      this.listNotesLogs(),
+    ]);
+    return { students, groups, sessions, ledger: { attendance, behavior }, adjustments, notes };
   }
 
   listStudents(): Promise<Student[]> {
@@ -147,6 +162,11 @@ export class FakeSheet implements SheetGateway {
   appendBehavior(point: BehaviorPoint): Promise<void> {
     this.rowsOf(BEHAVIOR_TAB.title).push(encodeBehavior(point));
     return Promise.resolve();
+  }
+
+  async saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
+    await this.appendBehavior(point);
+    await this.saveStudentSummaries(summaries);
   }
 
   setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {
