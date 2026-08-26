@@ -35,7 +35,6 @@ import {
 } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
 import { shareText, summarize, type StudentSummary } from '../domain/studentSummary';
-import { saveRollCall } from './saveRollCall';
 import type { SheetGateway } from '../infra/sheetGateway';
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
@@ -95,9 +94,6 @@ interface AppState {
   /** Whether the Summary shows each count as a share of that Student's own
       Sessions instead of a number of days. */
   asShare: boolean;
-  /** Set once this roll call's Attendance Records are in the Sheet, so a retry
-      writes only what is still missing. */
-  recordsSaved: boolean;
   message: Message | null;
   busy: boolean;
 }
@@ -137,7 +133,6 @@ export class App {
     noteFor: null,
     pendingBehavior: null,
     asShare: false,
-    recordsSaved: false,
     message: null,
     busy: false,
   };
@@ -211,7 +206,6 @@ export class App {
     this.set({
       rollCall: beginRollCall(session, group, data.students),
       noteFor: null,
-      recordsSaved: false,
       view: 'rollCall',
       message: null,
     });
@@ -295,16 +289,8 @@ export class App {
     if (!rollCall) return;
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
-      await saveRollCall(
-        this.sheet,
-        rollCall,
-        this.summariesAfterSave(rollCall),
-        { recordsSaved: this.state.recordsSaved },
-        (progress) => {
-          this.state = { ...this.state, recordsSaved: progress.recordsSaved };
-        },
-      );
-      this.set({ rollCall: null, noteFor: null, recordsSaved: false, view: 'groups' });
+      await this.sheet.saveRollCall(rollCall, this.summariesAfterSave(rollCall));
+      this.set({ rollCall: null, noteFor: null, view: 'groups' });
       await this.reload();
       this.set({ message: { text: 'Roll call saved.', isError: false } });
     } catch (error) {

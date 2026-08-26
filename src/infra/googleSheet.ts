@@ -39,6 +39,8 @@ import {
 } from './rows';
 import { SheetsApiError, type SheetsApi } from './sheetsApi';
 import type { SheetGateway } from './sheetGateway';
+import { writeRollCall } from './writeRollCall';
+import type { RollCall } from '../domain/rollCall';
 
 export const SHEET_TITLE = 'Roll Call';
 export const SHEET_ID_KEY = 'rollcall.spreadsheetId';
@@ -178,6 +180,10 @@ export class GoogleSheet implements SheetGateway {
 
   async appendAttendance(records: readonly AttendanceRecord[]): Promise<void> {
     await this.append(ATTENDANCE_TAB, records.map(encodeAttendance));
+  }
+
+  saveRollCall(rollCall: RollCall, summaries: readonly StudentSummary[]): Promise<void> {
+    return writeRollCall(this, rollCall, summaries);
   }
 
   async appendBehavior(point: BehaviorPoint): Promise<void> {

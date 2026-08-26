@@ -36,6 +36,8 @@ import {
   type SheetRow,
 } from './rows';
 import type { SheetGateway } from './sheetGateway';
+import { writeRollCall } from './writeRollCall';
+import type { RollCall } from '../domain/rollCall';
 
 export interface FakeSheetSeed {
   students?: Student[];
@@ -136,6 +138,10 @@ export class FakeSheet implements SheetGateway {
   appendAttendance(records: readonly AttendanceRecord[]): Promise<void> {
     this.rowsOf(ATTENDANCE_TAB.title).push(...records.map(encodeAttendance));
     return Promise.resolve();
+  }
+
+  saveRollCall(rollCall: RollCall, summaries: readonly StudentSummary[]): Promise<void> {
+    return writeRollCall(this, rollCall, summaries);
   }
 
   appendBehavior(point: BehaviorPoint): Promise<void> {

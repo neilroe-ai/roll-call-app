@@ -14,9 +14,12 @@ const STUDENTS = [
 ];
 const GROUP = { id: 'G1', name: '3A', studentIds: ['s1', 's2'] };
 
+let ids = 0;
+// Each roll call needs its own Session id: two Sessions sharing one would be a
+// Sheet the app could never produce, and the second would be read as a retry.
 const clock: Clock = {
   now: () => new Date('2026-08-26T09:00:00Z'),
-  newId: () => 'session-1',
+  newId: () => `session-${String(++ids)}`,
 };
 
 let root: HTMLElement;
