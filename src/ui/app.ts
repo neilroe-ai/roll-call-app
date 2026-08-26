@@ -12,30 +12,23 @@ import {
   type AttendanceStatus,
   type BehaviorKind,
 } from '../domain/points';
-import {
-  awardBehavior,
-  behaviorNote,
-  calendarDateOf,
-  signOf,
-  type CalendarDate,
-} from '../domain/behavior';
-import type { Adjustment } from '../domain/adjustment';
-import type { Group, Student } from '../domain/group';
-import type { Session } from '../domain/session';
-import type { PointsLedger } from '../domain/score';
-import {
-  beginRollCall,
-  mark,
-  markOf,
-  noteOf,
-  recordsToSave,
-  remaining,
-  setNote,
-  type RollCall,
-} from '../domain/rollCall';
+import { signOf } from '../domain/behavior';
+import type { Student } from '../domain/group';
+import { markOf, noteOf, remaining } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
-import { shareText, summarize, type StudentSummary } from '../domain/studentSummary';
+import { shareText, summarize } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
+import {
+  AppModel,
+  systemClock,
+  type AppState,
+  type Clock,
+  type Loaded,
+  type PendingBehavior,
+  type View,
+} from './appModel';
+
+export { systemClock, type Clock } from './appModel';
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: 'Here',
@@ -43,31 +36,6 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
   sick: 'Sick',
   other: 'Other',
 };
-
-interface Loaded {
-  students: Student[];
-  groups: Group[];
-  sessions: Session[];
-  ledger: PointsLedger;
-  /** The teacher's hand-typed corrections, keyed by student id. */
-  adjustments: Map<string, Adjustment>;
-  /** Each Student's Notes Log as the Sheet holds it. */
-  notes: Map<string, string[]>;
-}
-
-type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes' | 'behavior';
-
-/** A Behavior Point the teacher has chosen but not yet written, while they
-    decide whether to explain it. */
-interface PendingBehavior {
-  studentId: string;
-  kind: BehaviorKind;
-}
-
-interface Message {
-  text: string;
-  isError: boolean;
-}
 
 /** The words and the wiring of one text box. */
 interface TextBox {
@@ -81,34 +49,6 @@ interface TextBox {
   onSave: (text: string) => void;
   onDismiss: () => void;
 }
-
-/** Everything on screen, in one place. */
-interface AppState {
-  view: View;
-  data: Loaded | null;
-  rollCall: RollCall | null;
-  /** The Student whose Note field is open, if any. Only one at a time. */
-  noteFor: string | null;
-  /** The Behavior Point being written, if any. */
-  pendingBehavior: PendingBehavior | null;
-  /** Whether the Summary shows each count as a share of that Student's own
-      Sessions instead of a number of days. */
-  asShare: boolean;
-  message: Message | null;
-  busy: boolean;
-}
-
-/** How a Session gets its id and its time. Injected so nothing here reaches for
-    a global clock. */
-export interface Clock {
-  now(): Date;
-  newId(): string;
-}
-
-export const systemClock: Clock = {
-  now: () => new Date(),
-  newId: () => crypto.randomUUID(),
-};
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -126,194 +66,43 @@ function noStudents(): HTMLElement {
 }
 
 export class App {
-  private state: AppState = {
-    view: 'groups',
-    data: null,
-    rollCall: null,
-    noteFor: null,
-    pendingBehavior: null,
-    asShare: false,
-    message: null,
-    busy: false,
-  };
+  private readonly model: AppModel;
 
   constructor(
     private readonly root: HTMLElement,
-    private readonly sheet: SheetGateway,
-    private readonly clock: Clock = systemClock,
-  ) {}
-
-  /** The date where the teacher is standing. */
-  private today(): CalendarDate {
-    return calendarDateOf(this.clock.now());
-  }
-
-  /** Sign in, read the Sheet, show the Groups. */
-  async start(): Promise<void> {
-    this.set({ message: { text: 'Connecting to your Sheet…', isError: false }, busy: true });
-    await this.reload();
-  }
-
-  private set(changes: Partial<AppState>): void {
-    this.state = { ...this.state, ...changes };
-    this.render();
-  }
-
-  private fail(error: unknown): void {
-    const text = error instanceof Error ? error.message : 'Something went wrong.';
-    this.set({ message: { text, isError: true }, busy: false });
-  }
-
-  private async reload(): Promise<void> {
-    try {
-      const students = await this.sheet.listStudents();
-      // Every Student needs a row in the Groups grid before the teacher can
-      // tick them into anything, so the Students tab is pushed across first.
-      await this.sheet.syncGroupsGrid(students);
-      const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
-        this.sheet.listGroups(),
-        this.sheet.listSessions(),
-        this.sheet.listAttendance(),
-        this.sheet.listBehavior(),
-        this.sheet.listAdjustments(),
-        this.sheet.listNotesLogs(),
-      ]);
-      this.set({
-        data: {
-          students,
-          groups,
-          sessions,
-          ledger: { attendance, behavior },
-          adjustments,
-          notes,
-        },
-        message: null,
-        busy: false,
-      });
-    } catch (error) {
-      this.fail(error);
-    }
-  }
-
-  private startRollCall(group: Group): void {
-    const data = this.state.data;
-    if (!data) return;
-    const session: Session = {
-      id: this.clock.newId(),
-      groupId: group.id,
-      takenAt: this.clock.now().toISOString(),
-    };
-    this.set({
-      rollCall: beginRollCall(session, group, data.students),
-      noteFor: null,
-      view: 'rollCall',
-      message: null,
+    sheet: SheetGateway,
+    clock: Clock = systemClock,
+  ) {
+    this.model = new AppModel(sheet, clock, (state) => {
+      this.draw(state);
     });
   }
 
-  /** The Students tab as it should read once this roll call is in. Worked out
-      from the Ledger the save is about to create, not from what the Sheet says
-      now, so one write leaves the report correct. */
-  private summariesAfterSave(rollCall: RollCall): StudentSummary[] {
-    const data = this.state.data;
-    if (!data) return [];
-    const ledger: PointsLedger = {
-      attendance: [...data.ledger.attendance, ...recordsToSave(rollCall)],
-      behavior: data.ledger.behavior,
-    };
-    // The Session being saved is not in `data.sessions` yet, but it has just
-    // happened: leaving it out would rate every Student against one Session
-    // fewer than they were actually at.
-    const sessions = [...data.sessions, rollCall.session];
-    return summarize(
-      { ...data, ledger, sessions },
-      { on: this.today(), byStudent: rollCall.notes },
-    );
+  /** Sign in, read the Sheet, show the Groups. */
+  start(): Promise<void> {
+    return this.model.start();
   }
 
-  /** Write the chosen Behavior Point, with whatever the teacher typed to
-      explain it. The point counts at once, so the Students summary is rewritten
-      straight after it — a Score that lagged behind the Behavior tab would be
-      read as the app losing a point. */
-  private async saveBehavior(student: Student, kind: BehaviorKind, text: string): Promise<void> {
-    const data = this.state.data;
-    if (!data) return;
-    const today = this.today();
-    const point = awardBehavior(this.clock.newId(), student.id, today, kind, text);
-
-    this.set({ pendingBehavior: null, busy: true, message: { text: 'Saving…', isError: false } });
-    try {
-      await this.sheet.appendBehavior(point);
-      const ledger: PointsLedger = {
-        attendance: data.ledger.attendance,
-        behavior: [...data.ledger.behavior, point],
-      };
-      // Only an explained point earns a line in the Notes Log. The bare fact of
-      // the point is already in the Behavior tab.
-      const added =
-        point.note === undefined
-          ? undefined
-          : { on: today, byStudent: new Map([[student.id, behaviorNote(kind, point.note)]]) };
-      await this.sheet.saveStudentSummaries(summarize({ ...data, ledger }, added));
-      await this.reload();
-      this.set({ message: { text: `${signOf(kind)} for ${student.name}.`, isError: false } });
-    } catch (error) {
-      this.fail(error);
-    }
-  }
-
-  /** Write a Note about a Student with no roll call in progress. The Students
-      tab is rewritten whole, so this is the same write a save makes. */
-  private async saveNote(student: Student, text: string): Promise<void> {
-    const data = this.state.data;
-    if (!data) return;
-    // Nothing written, nothing to save: closing the field is the whole action.
-    if (text.trim() === '') {
-      this.set({ noteFor: null });
-      return;
-    }
-    this.set({ noteFor: null, busy: true, message: { text: 'Saving…', isError: false } });
-    try {
-      await this.sheet.saveStudentSummaries(
-        summarize(data, { on: this.today(), byStudent: new Map([[student.id, text]]) }),
-      );
-      await this.reload();
-      this.set({ message: { text: 'Note saved.', isError: false } });
-    } catch (error) {
-      this.fail(error);
-    }
-  }
-
-  private async save(): Promise<void> {
-    const rollCall = this.state.rollCall;
-    if (!rollCall) return;
-    this.set({ busy: true, message: { text: 'Saving…', isError: false } });
-    try {
-      await this.sheet.saveRollCall(rollCall, this.summariesAfterSave(rollCall));
-      this.set({ rollCall: null, noteFor: null, view: 'groups' });
-      await this.reload();
-      this.set({ message: { text: 'Roll call saved.', isError: false } });
-    } catch (error) {
-      this.fail(error);
-    }
-  }
-
-  private render(): void {
-    const { view, data, message, busy } = this.state;
+  /** Draw the whole screen from the state it came from. Called on every
+      change (ADR 0005): at class-sized lists this is fast, and the screen can
+      never disagree with the state behind it. */
+  private draw(state: AppState): void {
+    const { view, data, message, busy } = state;
     this.root.replaceChildren();
 
-    if (data) this.root.append(this.renderNav());
+    if (data) this.root.append(this.renderNav(state));
 
     if (message) {
       this.root.append(element('p', message.isError ? 'message error' : 'message', message.text));
     }
 
     if (!data) return;
-    if (view === 'rollCall' && this.state.rollCall) this.root.append(...this.renderRollCall());
+    if (view === 'rollCall' && state.rollCall) this.root.append(...this.renderRollCall(state));
     else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(data));
-    else if (view === 'summary') this.root.append(...this.renderSummary(data));
-    else if (view === 'notes') this.root.append(...this.renderNotes(data));
-    else if (view === 'behavior') this.root.append(...this.renderBehavior(data));
+    else if (view === 'summary') this.root.append(...this.renderSummary(data, state.asShare));
+    else if (view === 'notes') this.root.append(...this.renderNotes(data, state.noteFor));
+    else if (view === 'behavior')
+      this.root.append(...this.renderBehavior(data, state.pendingBehavior));
     else this.root.append(...this.renderGroups(data));
 
     if (busy) {
@@ -325,7 +114,7 @@ export class App {
     this.root.querySelector('textarea')?.focus();
   }
 
-  private renderNav(): HTMLElement {
+  private renderNav(state: AppState): HTMLElement {
     const nav = element('nav');
     const tabs: [View, string][] = [
       ['groups', 'Take roll'],
@@ -336,18 +125,9 @@ export class App {
     ];
     for (const [view, label] of tabs) {
       const button = element('button', undefined, label);
-      button.setAttribute('aria-current', String(this.state.view === view));
+      button.setAttribute('aria-current', String(state.view === view));
       button.addEventListener('click', () => {
-        // A roll call in progress survives a trip to another tab: its marks and
-        // Notes are only in memory, and losing them to a stray tap would lose
-        // work the teacher cannot get back. "Take roll" returns to it.
-        const returning = view === 'groups' && this.state.rollCall !== null;
-        this.set({
-          view: returning ? 'rollCall' : view,
-          noteFor: null,
-          pendingBehavior: null,
-          message: null,
-        });
+        this.model.show(view);
       });
       nav.append(button);
     }
@@ -378,7 +158,7 @@ export class App {
         `${group.name} — ${String(group.studentIds.length)} students`,
       );
       button.addEventListener('click', () => {
-        this.startRollCall(group);
+        this.model.startRollCall(group);
       });
       item.append(button);
       list.append(item);
@@ -386,8 +166,8 @@ export class App {
     return [heading, list];
   }
 
-  private renderRollCall(): HTMLElement[] {
-    const rollCall = this.state.rollCall;
+  private renderRollCall(state: AppState): HTMLElement[] {
+    const rollCall = state.rollCall;
     if (!rollCall) return [];
     const left = remaining(rollCall).length;
 
@@ -412,13 +192,7 @@ export class App {
         button.setAttribute('aria-pressed', String(chosen === status));
         button.setAttribute('aria-label', `${student.name}: ${STATUS_LABEL[status]}`);
         button.addEventListener('click', () => {
-          // The Note is kept across a change of status: mark() carries it.
-          this.set({
-            rollCall: mark(rollCall, student.id, status),
-            // Sick and other need explaining, so the field opens itself. Any
-            // other status leaves whatever the teacher already had open.
-            noteFor: status === 'sick' || status === 'other' ? student.id : this.state.noteFor,
-          });
+          this.model.markStudent(student.id, status);
         });
         marks.append(button);
       }
@@ -427,7 +201,7 @@ export class App {
 
       // Always offered: a Student can need a Note whatever the teacher marked,
       // and a saved Note is otherwise invisible once the field closes.
-      const open = this.state.noteFor === student.id;
+      const open = state.noteFor === student.id;
       if (!open) {
         const note = noteOf(rollCall, student.id);
         marks.append(this.renderNoteButton(student, note === undefined ? 'Add note' : 'Edit note'));
@@ -436,7 +210,7 @@ export class App {
       if (open) {
         row.append(
           this.renderNoteField(student, noteOf(rollCall, student.id) ?? '', (text) => {
-            this.set({ rollCall: setNote(rollCall, student.id, text), noteFor: null });
+            this.model.writeNote(student.id, text);
           }),
         );
       }
@@ -454,13 +228,13 @@ export class App {
     // The only way out that throws the roll call away, so it says so.
     const discard = element('button', undefined, 'Discard and pick another group');
     discard.addEventListener('click', () => {
-      this.set({ rollCall: null, noteFor: null, view: 'groups', message: null });
+      this.model.discardRollCall();
     });
     // A roll call carrying only a Note is still worth saving: the teacher
     // wrote something about a Student, and it must not be thrown away.
     save.disabled = rollCall.marks.size === 0 && rollCall.notes.size === 0;
     save.addEventListener('click', () => {
-      void this.save();
+      void this.model.save();
     });
 
     return [heading, progress, list, save, discard];
@@ -473,7 +247,7 @@ export class App {
     const button = element('button', 'note-open', label);
     button.setAttribute('aria-label', `${label} for ${student.name}`);
     button.addEventListener('click', () => {
-      this.set({ noteFor: student.id });
+      this.model.openNote(student.id);
     });
     return button;
   }
@@ -520,23 +294,22 @@ export class App {
       dismiss: 'Dismiss',
       onSave,
       onDismiss: () => {
-        this.set({ noteFor: null });
+        this.model.closeNote();
       },
     });
   }
 
   /** Every Student's Score and how their Attendance Statuses fell out — the
       Students tab, readable without opening the Sheet. */
-  private renderSummary(data: Loaded): HTMLElement[] {
+  private renderSummary(data: Loaded, asShare: boolean): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
     const summaries = summarize(data);
     const heading = element('h1', undefined, 'Summary');
 
-    const { asShare } = this.state;
     const toggle = element('button', undefined, asShare ? 'Show days' : 'Show %');
     toggle.setAttribute('aria-pressed', String(asShare));
     toggle.addEventListener('click', () => {
-      this.set({ asShare: !asShare });
+      this.model.toggleShare();
     });
     const controls = element('div', 'controls');
     controls.append(
@@ -574,7 +347,7 @@ export class App {
 
   /** Awarding and subtracting Behavior Points. A point is chosen first and
       written second, so the teacher can explain it before it counts. */
-  private renderBehavior(data: Loaded): HTMLElement[] {
+  private renderBehavior(data: Loaded, pendingBehavior: PendingBehavior | null): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Behavior');
     const hint = element('p', 'muted', 'Award or subtract a point, and say why.');
@@ -585,8 +358,7 @@ export class App {
       const top = element('div', 'roll-row');
       top.append(element('span', 'name', student.name));
 
-      const pending =
-        this.state.pendingBehavior?.studentId === student.id ? this.state.pendingBehavior : null;
+      const pending = pendingBehavior?.studentId === student.id ? pendingBehavior : null;
       const buttons = element('div', 'marks');
       for (const kind of BEHAVIOR_KINDS) {
         const button = element('button', undefined, signOf(kind));
@@ -594,7 +366,7 @@ export class App {
         button.setAttribute('aria-pressed', String(pending?.kind === kind));
         button.setAttribute('aria-label', `${signOf(kind)} for ${student.name}`);
         button.addEventListener('click', () => {
-          this.set({ pendingBehavior: { studentId: student.id, kind } });
+          this.model.chooseBehavior(student.id, kind);
         });
         buttons.append(button);
       }
@@ -617,17 +389,17 @@ export class App {
       emphasis: 'primary',
       dismiss: 'Cancel',
       onSave: (text) => {
-        void this.saveBehavior(student, kind, text);
+        void this.model.saveBehavior(student, kind, text);
       },
       onDismiss: () => {
-        this.set({ pendingBehavior: null });
+        this.model.cancelBehavior();
       },
     });
   }
 
   /** Every Student's Notes Log, and a way to add to any of them. This is where
       a Note gets written when no roll call is being taken. */
-  private renderNotes(data: Loaded): HTMLElement[] {
+  private renderNotes(data: Loaded, noteFor: string | null): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Notes');
     const hint = element('p', 'muted', 'Add a note about any student, any time.');
@@ -639,7 +411,7 @@ export class App {
 
       const top = element('div', 'roll-row');
       top.append(element('h2', 'name', student.name));
-      const open = this.state.noteFor === student.id;
+      const open = noteFor === student.id;
       if (!open) top.append(this.renderNoteButton(student, 'Add note'));
       item.append(top);
 
@@ -654,7 +426,7 @@ export class App {
       if (open) {
         item.append(
           this.renderNoteField(student, '', (text) => {
-            void this.saveNote(student, text);
+            void this.model.saveNote(student, text);
           }),
         );
       }
