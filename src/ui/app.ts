@@ -6,12 +6,7 @@
  * All decisions live in `domain`; this file only renders and turns taps into
  * calls.
  */
-import {
-  BEHAVIOR_KINDS,
-  STATUSES,
-  type AttendanceStatus,
-  type BehaviorKind,
-} from '../domain/points';
+import { BEHAVIOR_KINDS, STATUSES, type AttendanceStatus } from '../domain/points';
 import { signOf } from '../domain/behavior';
 import type { Student } from '../domain/group';
 import { markOf, noteOf, remaining } from '../domain/rollCall';
@@ -382,7 +377,7 @@ export class App {
       top.append(buttons);
       item.append(top);
 
-      if (pending) item.append(this.renderBehaviorNote(student, pending.kind));
+      if (pending) item.append(this.renderBehaviorNote(student, pending));
       list.append(item);
     }
     return [heading, hint, list];
@@ -390,15 +385,18 @@ export class App {
 
   /** The reason for a Behavior Point, and the button that commits it. Nothing
       is written until Save, so a mis-tap costs a tap on Cancel. */
-  private renderBehaviorNote(student: Student, kind: BehaviorKind): HTMLElement {
+  private renderBehaviorNote(student: Student, pending: PendingBehavior): HTMLElement {
+    const kind = pending.kind;
     return this.renderTextBox({
+      // Filled in only after a failed save, so a retry keeps her words.
+      ...(pending.note === undefined ? {} : { current: pending.note }),
       label: `Why ${signOf(kind)} for ${student.name}`,
       placeholder: 'Why? (optional)',
       save: `Save ${signOf(kind)}`,
       emphasis: 'primary',
       dismiss: 'Cancel',
       onSave: (text) => {
-        void this.model.saveBehavior(student, kind, text);
+        void this.model.saveBehavior(text);
       },
       onDismiss: () => {
         this.model.cancelBehavior();

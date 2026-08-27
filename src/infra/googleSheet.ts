@@ -41,6 +41,7 @@ import { SheetsApiError, type SheetsApi } from './sheetsApi';
 import type { SheetGateway } from './sheetGateway';
 import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
+import { writeBehavior } from './writeBehavior';
 import type { RollCall } from '../domain/rollCall';
 
 export const SHEET_TITLE = 'Roll Call';
@@ -215,9 +216,8 @@ export class GoogleSheet implements SheetGateway {
     await this.append(BEHAVIOR_TAB, [encodeBehavior(point)]);
   }
 
-  async saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
-    await this.appendBehavior(point);
-    await this.saveStudentSummaries(summaries);
+  saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
+    return writeBehavior(this, point, summaries);
   }
 
   /**

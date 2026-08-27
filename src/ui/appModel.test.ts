@@ -10,6 +10,7 @@ import type { SheetGateway } from '../infra/sheetGateway';
 import type { RollCallStore } from '../infra/rollCallStore';
 import { markOf, noteOf, type SavedRollCall } from '../domain/rollCall';
 import type { Session } from '../domain/session';
+import type { StudentSummary } from '../domain/studentSummary';
 
 const STUDENTS = [
   { id: 's1', name: 'Amy' },
@@ -156,11 +157,46 @@ describe('writing outside a roll call', () => {
   it('says what went wrong when a behavior point cannot be written', async () => {
     const model = await started(new WritesFail({ students: STUDENTS, groups: [GROUP] }));
     model.chooseBehavior('s1', 'positive');
+    const chosen = model.state.pendingBehavior?.id;
 
-    await model.saveBehavior(STUDENTS[0]!, 'positive', 'helped tidy up');
+    await model.saveBehavior('helped tidy up');
 
     expect(model.state.message).toEqual({ text: 'network lost', isError: true });
+    // The point stays on screen with what she typed, so Save can be tapped
+    // again — and it keeps its id, so it is the same point, not a second one.
+    expect(model.state.pendingBehavior).toEqual({
+      id: chosen,
+      studentId: 's1',
+      kind: 'positive',
+      note: 'helped tidy up',
+    });
+  });
+
+  it('awards one point, not two, when the first save half landed', async () => {
+    /** A Sheet that loses the connection between the point and the Summary
+        exactly once. */
+    class LosesTheSummary extends FakeSheet {
+      private dropping = true;
+      override saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
+        if (!this.dropping) return super.saveStudentSummaries(summaries);
+        this.dropping = false;
+        return Promise.reject(new Error('network lost'));
+      }
+    }
+    const sheet = new LosesTheSummary({ students: STUDENTS, groups: [GROUP] });
+    const model = await started(sheet);
+    model.chooseBehavior('s1', 'positive');
+
+    await model.saveBehavior('helped tidy up');
+    expect((await sheet.read()).ledger.behavior).toHaveLength(1);
+    expect(model.state.message?.isError).toBe(true);
+
+    // She taps Save again on the same point.
+    await model.saveBehavior('helped tidy up');
+
+    expect((await sheet.read()).ledger.behavior).toHaveLength(1);
     expect(model.state.pendingBehavior).toBeNull();
+    expect(model.state.message).toEqual({ text: '+1 for Amy.', isError: false });
   });
 });
 

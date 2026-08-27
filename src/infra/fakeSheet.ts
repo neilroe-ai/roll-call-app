@@ -38,6 +38,7 @@ import {
 import type { SheetGateway } from './sheetGateway';
 import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
+import { writeBehavior } from './writeBehavior';
 import type { RollCall } from '../domain/rollCall';
 
 export interface FakeSheetSeed {
@@ -164,9 +165,8 @@ export class FakeSheet implements SheetGateway {
     return Promise.resolve();
   }
 
-  async saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
-    await this.appendBehavior(point);
-    await this.saveStudentSummaries(summaries);
+  saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
+    return writeBehavior(this, point, summaries);
   }
 
   setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {

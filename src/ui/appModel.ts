@@ -33,10 +33,15 @@ import { noRollCallStore, type RollCallStore } from '../infra/rollCallStore';
 export type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes' | 'behavior';
 
 /** A Behavior Point the teacher has chosen but not yet written, while they
-    decide whether to explain it. */
+    decide whether to explain it. It has its id from the moment it is chosen, so
+    a save tapped twice is one point written twice, not two points. */
 export interface PendingBehavior {
+  id: string;
   studentId: string;
   kind: BehaviorKind;
+  /** What they typed to explain it, kept only once a save has failed, so the
+      retry offers the words back rather than an empty field. */
+  note?: string;
 }
 
 export interface Message {
@@ -191,7 +196,7 @@ export class AppModel {
   }
 
   chooseBehavior(studentId: string, kind: BehaviorKind): void {
-    this.set({ pendingBehavior: { studentId, kind } });
+    this.set({ pendingBehavior: { id: this.clock.newId(), studentId, kind } });
   }
 
   cancelBehavior(): void {
@@ -217,17 +222,25 @@ export class AppModel {
     }
   }
 
-  /** Write the chosen Behavior Point, with whatever the teacher typed to
-      explain it. The point counts at once, so the Students summary is rewritten
+  /** Write the Behavior Point the teacher has chosen, with whatever she typed
+      to explain it. The point counts at once, so the Summary tab is rewritten
       straight after it — a Score that lagged behind the Behavior tab would be
-      read as the app losing a point. */
-  async saveBehavior(student: Student, kind: BehaviorKind, text: string): Promise<void> {
-    const data = this.current.data;
-    if (!data) return;
-    const today = this.today();
-    const point = awardBehavior(this.clock.newId(), student.id, today, kind, text);
+      read as the app losing a point.
 
-    this.set({ pendingBehavior: null, busy: true, message: { text: 'Saving…', isError: false } });
+      A failure keeps the point on screen with the id it was chosen with, so
+      tapping Save again is the same write. The Sheet reads it back by that id
+      and appends nothing it already holds. */
+  async saveBehavior(text: string): Promise<void> {
+    const data = this.current.data;
+    const pending = this.current.pendingBehavior;
+    if (!data || !pending) return;
+    const student = data.students.find((candidate) => candidate.id === pending.studentId);
+    if (!student) return;
+
+    const today = this.today();
+    const point = awardBehavior(pending.id, pending.studentId, today, pending.kind, text);
+
+    this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
       const ledger: PointsLedger = {
         attendance: data.ledger.attendance,
@@ -235,12 +248,16 @@ export class AppModel {
       };
       const added = {
         on: today,
-        byStudent: new Map([[student.id, behaviorText(kind, point.note)]]),
+        byStudent: new Map([[student.id, behaviorText(pending.kind, point.note)]]),
       };
       await this.sheet.saveBehavior(point, summarize({ ...data, ledger }, added));
+      this.set({ pendingBehavior: null });
       await this.reload();
-      this.set({ message: { text: `${signOf(kind)} for ${student.name}.`, isError: false } });
+      this.set({
+        message: { text: `${signOf(pending.kind)} for ${student.name}.`, isError: false },
+      });
     } catch (error) {
+      this.set({ pendingBehavior: { ...pending, note: text } });
       this.fail(error);
     }
   }
