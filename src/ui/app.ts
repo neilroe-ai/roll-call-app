@@ -359,7 +359,12 @@ export class App {
       }
       table.append(row);
     }
-    return [heading, controls, table];
+    // On a phone narrower than the table, the table scrolls sideways inside
+    // this rather than taking the whole page with it — a Summary that pushed
+    // the nav off screen would cost a tap to get back to.
+    const scroller = element('div', 'scroll-x');
+    scroller.append(table);
+    return [heading, controls, scroller];
   }
 
   /** Awarding and subtracting Behavior Points. A point is chosen first and
