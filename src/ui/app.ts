@@ -98,24 +98,24 @@ export class App {
       change (ADR 0005): at class-sized lists this is fast, and the screen can
       never disagree with the state behind it. */
   private draw(state: AppState): void {
-    const { view, data, message, busy } = state;
+    const { view, snapshot, message, busy } = state;
     this.root.replaceChildren();
 
-    if (data) this.root.append(this.renderNav(state));
+    if (snapshot) this.root.append(this.renderNav(state));
 
     if (message) {
       this.root.append(element('p', message.isError ? 'message error' : 'message', message.text));
     }
 
-    if (!data) return;
+    if (!snapshot) return;
     if (view === 'rollCall' && state.rollCall) this.root.append(...this.renderRollCall(state));
-    else if (view === 'held') this.root.append(...this.renderHeld(data));
-    else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(data));
-    else if (view === 'summary') this.root.append(...this.renderSummary(data, state.asShare));
-    else if (view === 'notes') this.root.append(...this.renderNotes(data, state.noteFor));
+    else if (view === 'held') this.root.append(...this.renderHeld(snapshot));
+    else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(snapshot));
+    else if (view === 'summary') this.root.append(...this.renderSummary(snapshot, state.asShare));
+    else if (view === 'notes') this.root.append(...this.renderNotes(snapshot, state.noteFor));
     else if (view === 'behavior')
-      this.root.append(...this.renderBehavior(data, state.pendingBehavior));
-    else this.root.append(...this.renderGroups(data));
+      this.root.append(...this.renderBehavior(snapshot, state.pendingBehavior));
+    else this.root.append(...this.renderGroups(snapshot));
 
     if (busy) {
       this.root.querySelectorAll('button').forEach((button) => (button.disabled = true));
@@ -131,7 +131,7 @@ export class App {
     // Held Points expire never and announce themselves nowhere else, so the
     // count rides on the tab: a backlog nobody can see is a backlog nobody
     // settles.
-    const waiting = state.data ? heldPoints(state.data).length : 0;
+    const waiting = state.snapshot ? heldPoints(state.snapshot).length : 0;
     const tabs: [View, string][] = [
       ['groups', 'Take roll'],
       ['behavior', 'Behavior'],
@@ -151,11 +151,11 @@ export class App {
     return nav;
   }
 
-  private renderGroups(data: Snapshot): HTMLElement[] {
+  private renderGroups(snapshot: Snapshot): HTMLElement[] {
     // A Group the teacher has named but not filled in is a real Group, and the
     // grid still shows it. There is no roll to take in it, so Take roll does
     // not offer it.
-    const groups = data.groups.filter((group) => group.studentIds.length > 0);
+    const groups = snapshot.groups.filter((group) => group.studentIds.length > 0);
     if (groups.length === 0) {
       return [
         element(
@@ -318,9 +318,9 @@ export class App {
 
   /** Every Student's Score and how their Attendance Statuses fell out — the
       Summary tab, readable without opening the Sheet. */
-  private renderSummary(data: Snapshot, asShare: boolean): HTMLElement[] {
-    if (data.students.length === 0) return [noStudents()];
-    const summaries = summarize(data);
+  private renderSummary(snapshot: Snapshot, asShare: boolean): HTMLElement[] {
+    if (snapshot.students.length === 0) return [noStudents()];
+    const summaries = summarize(snapshot);
     const heading = element('h1', undefined, 'Summary');
 
     const toggle = element('button', undefined, asShare ? 'Show days' : 'Show %');
@@ -364,13 +364,16 @@ export class App {
 
   /** Awarding and subtracting Behavior Points. A point is chosen first and
       written second, so the teacher can explain it before it counts. */
-  private renderBehavior(data: Snapshot, pendingBehavior: PendingBehavior | null): HTMLElement[] {
-    if (data.students.length === 0) return [noStudents()];
+  private renderBehavior(
+    snapshot: Snapshot,
+    pendingBehavior: PendingBehavior | null,
+  ): HTMLElement[] {
+    if (snapshot.students.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Behavior');
     const hint = element('p', 'muted', 'Award or subtract a point, and say why.');
 
     const list = element('ul');
-    for (const student of data.students) {
+    for (const student of snapshot.students) {
       const item = element('li');
       const top = element('div', 'roll-row');
       top.append(element('span', 'name', student.name));
@@ -419,14 +422,14 @@ export class App {
 
   /** Every Student's Notes Log, and a way to add to any of them. This is where
       a Note gets written when no roll call is being taken. */
-  private renderNotes(data: Snapshot, noteFor: string | null): HTMLElement[] {
-    if (data.students.length === 0) return [noStudents()];
+  private renderNotes(snapshot: Snapshot, noteFor: string | null): HTMLElement[] {
+    if (snapshot.students.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Notes');
     const hint = element('p', 'muted', 'Add a note about any student, any time.');
 
     const list = element('ul');
-    for (const student of data.students) {
-      const log = data.notes.get(student.id) ?? [];
+    for (const student of snapshot.students) {
+      const log = snapshot.notes.get(student.id) ?? [];
       const item = element('li');
 
       const top = element('div', 'roll-row');
@@ -458,8 +461,8 @@ export class App {
   /** Every Held Point still waiting, and the two answers that settle it. The
       teacher decides one thing here — did the documentation arrive — so the
       row carries what she needs to answer it and nothing else. */
-  private renderHeld(data: Snapshot): HTMLElement[] {
-    const waiting = heldPoints(data);
+  private renderHeld(snapshot: Snapshot): HTMLElement[] {
+    const waiting = heldPoints(snapshot);
     const heading = element('h1', undefined, 'Held points');
     if (waiting.length === 0) {
       return [heading, element('p', 'muted', 'Nothing waiting. Every point is settled.')];
@@ -509,8 +512,8 @@ export class App {
     return item;
   }
 
-  private renderScoreboard(data: Snapshot): HTMLElement[] {
-    const entries = scoreboard(data.students, data.ledger, data.adjustments);
+  private renderScoreboard(snapshot: Snapshot): HTMLElement[] {
+    const entries = scoreboard(snapshot);
     if (entries.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Scoreboard');
     const list = element('ul');
