@@ -77,6 +77,11 @@ export const systemClock: Clock = {
   newId: () => crypto.randomUUID(),
 };
 
+/** What to put on screen when something has gone wrong. */
+function reasonFor(error: unknown): string {
+  return error instanceof Error ? error.message : 'Something went wrong.';
+}
+
 const INITIAL: AppState = {
   view: 'groups',
   data: null,
@@ -207,7 +212,9 @@ export class AppModel {
     this.set({ asShare: !this.current.asShare });
   }
 
-  /** Commit the roll call being marked, then read the Sheet back. */
+  /** Commit the roll call being marked, then read the Sheet back. The roll
+      call is let go only once the write has landed, so a failure leaves it on
+      screen to try again. */
   async save(): Promise<void> {
     const rollCall = this.current.rollCall;
     if (!rollCall) return;
@@ -215,8 +222,7 @@ export class AppModel {
     try {
       await this.sheet.saveRollCall(rollCall, this.summariesAfterSave(rollCall));
       this.set({ rollCall: null, noteFor: null, view: 'groups' });
-      await this.reload();
-      this.set({ message: { text: 'Roll call saved.', isError: false } });
+      await this.reload('Roll call saved.');
     } catch (error) {
       this.fail(error);
     }
@@ -252,10 +258,7 @@ export class AppModel {
       };
       await this.sheet.saveBehavior(point, summarize({ ...data, ledger }, added));
       this.set({ pendingBehavior: null });
-      await this.reload();
-      this.set({
-        message: { text: `${signOf(pending.kind)} for ${student.name}.`, isError: false },
-      });
+      await this.reload(`${signOf(pending.kind)} for ${student.name}.`);
     } catch (error) {
       this.set({ pendingBehavior: { ...pending, note: text } });
       this.fail(error);
@@ -279,8 +282,7 @@ export class AppModel {
       await this.sheet.saveStudentSummaries(
         summarize(data, { on: today, byStudent: new Map([[student.id, text]]) }),
       );
-      await this.reload();
-      this.set({ message: { text: 'Note saved.', isError: false } });
+      await this.reload('Note saved.');
     } catch (error) {
       this.fail(error);
     }
@@ -311,17 +313,36 @@ export class AppModel {
     );
   }
 
-  private async reload(): Promise<void> {
+  /** Read the Sheet back, and report the action that led here.
+
+      `done` is what has already landed on the Sheet by the time the read runs.
+      A failed read cannot unland it, so both are reported: what succeeded, and
+      that the screen is now older than the Sheet. Reporting only the read
+      failure would read as the write having failed, and reporting only the
+      success would hide that the figures on screen are stale. At start-up
+      nothing has been written, so there is only the read to report. */
+  private async reload(done?: string): Promise<void> {
     try {
-      this.set({ data: await this.sheet.read(), message: null, busy: false });
+      const data = await this.sheet.read();
+      this.set({
+        data,
+        message: done === undefined ? null : { text: done, isError: false },
+        busy: false,
+      });
     } catch (error) {
-      this.fail(error);
+      const why = reasonFor(error);
+      this.set({
+        message: {
+          text: done === undefined ? why : `${done} The Sheet could not be read back: ${why}`,
+          isError: true,
+        },
+        busy: false,
+      });
     }
   }
 
   private fail(error: unknown): void {
-    const text = error instanceof Error ? error.message : 'Something went wrong.';
-    this.set({ message: { text, isError: true }, busy: false });
+    this.set({ message: { text: reasonFor(error), isError: true }, busy: false });
   }
 
   private set(changes: Partial<AppState>): void {

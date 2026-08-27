@@ -11,6 +11,7 @@ import type { RollCallStore } from '../infra/rollCallStore';
 import { markOf, noteOf, type SavedRollCall } from '../domain/rollCall';
 import type { Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
+import type { Snapshot } from '../domain/snapshot';
 
 const STUDENTS = [
   { id: 's1', name: 'Amy' },
@@ -197,6 +198,76 @@ describe('writing outside a roll call', () => {
     expect((await sheet.read()).ledger.behavior).toHaveLength(1);
     expect(model.state.pendingBehavior).toBeNull();
     expect(model.state.message).toEqual({ text: '+1 for Amy.', isError: false });
+  });
+});
+
+describe('a write that lands but cannot be read back', () => {
+  /** A Sheet that reads once, at start-up, and not again — the token dies while
+      the teacher is marking, after her write has already landed. */
+  class ReadsOnce extends FakeSheet {
+    private read_ = 0;
+    override read(): Promise<Snapshot> {
+      this.read_ += 1;
+      return this.read_ > 1 ? Promise.reject(new Error('token expired')) : super.read();
+    }
+  }
+
+  it('says the roll call saved and that the screen is now stale', async () => {
+    const sheet = new ReadsOnce({ students: STUDENTS, groups: [GROUP] });
+    const model = await started(sheet);
+    model.startRollCall(GROUP);
+    model.markStudent('s1', 'present');
+    model.markStudent('s2', 'present');
+
+    await model.save();
+
+    expect(model.state.message).toEqual({
+      text: 'Roll call saved. The Sheet could not be read back: token expired',
+      isError: true,
+    });
+    // The write landed, so the roll call is let go and the Snapshot on screen
+    // is the one from start-up, older than the Sheet.
+    expect(model.state.rollCall).toBeNull();
+    expect(model.state.data?.sessions).toEqual([]);
+    expect((await sheet.rowsForTest('Sessions')).length).toBe(2);
+    expect(model.state.busy).toBe(false);
+  });
+
+  it('says the same of a behavior point', async () => {
+    const model = await started(new ReadsOnce({ students: STUDENTS, groups: [GROUP] }));
+    model.chooseBehavior('s1', 'positive');
+
+    await model.saveBehavior('helped tidy up');
+
+    expect(model.state.message).toEqual({
+      text: '+1 for Amy. The Sheet could not be read back: token expired',
+      isError: true,
+    });
+    // The point is written, so it is not offered for a retry.
+    expect(model.state.pendingBehavior).toBeNull();
+  });
+
+  it('says the same of a note', async () => {
+    const model = await started(new ReadsOnce({ students: STUDENTS, groups: [GROUP] }));
+
+    await model.saveNote(STUDENTS[0]!, 'moved seats');
+
+    expect(model.state.message).toEqual({
+      text: 'Note saved. The Sheet could not be read back: token expired',
+      isError: true,
+    });
+  });
+
+  it('reports the read alone when nothing has been written yet', async () => {
+    class ReadFails extends FakeSheet {
+      override read(): Promise<never> {
+        return Promise.reject(new Error('token expired'));
+      }
+    }
+    const model = new AppModel(new ReadFails(), clock);
+    await model.start();
+
+    expect(model.state.message).toEqual({ text: 'token expired', isError: true });
   });
 });
 
