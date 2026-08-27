@@ -8,3 +8,9 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    ignore:
+      # typescript-eslint 8.x peers on typescript <6.1.0, so TS 7 breaks
+      # `npm ci` with an ERESOLVE conflict. Drop this once typescript-eslint
+      # ships TS 7 support. See PR #4.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
