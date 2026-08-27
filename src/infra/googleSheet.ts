@@ -17,23 +17,7 @@ import {
   GROUPS_TAB,
   SESSIONS_TAB,
   STUDENTS_TAB,
-  SUMMARY_LAST_COLUMN,
   SUMMARY_TAB,
-  decodeAdjustments,
-  decodeAttendance,
-  decodeBehavior,
-  decodeGroups,
-  decodeSession,
-  decodeStudent,
-  decodeSummaryNotes,
-  decodeTab,
-  encodeAttendance,
-  encodeBehavior,
-  encodeSession,
-  findAttendanceRow,
-  groupsGridColumns,
-  POINT_COLUMN,
-  summaryBlock,
   type SheetRow,
   type TabSchema,
 } from './rows';
@@ -117,9 +101,10 @@ export class GoogleSheet implements SheetGateway {
     }
   }
 
-  private async readTab<T>(tab: TabSchema, decode: (row: SheetRow, at: number) => T): Promise<T[]> {
-    const values = await this.withSheet((id) => this.api.getValues(id, wholeTab(tab)));
-    return decodeTab(values, decode);
+  /** Every value on a tab, header row included. What it means is the tab's
+      own business, so the caller hands the rows straight back to it. */
+  private valuesOf(tab: TabSchema): Promise<readonly SheetRow[]> {
+    return this.withSheet((id) => this.api.getValues(id, wholeTab(tab)));
   }
 
   /** Everything the Sheet holds. The Groups Grid is squared up against the
@@ -146,38 +131,34 @@ export class GoogleSheet implements SheetGateway {
     };
   }
 
-  listStudents(): Promise<Student[]> {
-    return this.readTab(STUDENTS_TAB, decodeStudent);
+  async listStudents(): Promise<Student[]> {
+    return STUDENTS_TAB.decode(await this.valuesOf(STUDENTS_TAB));
   }
 
   /** The Groups grid is read whole, not row by row: a Group is a column, so no
       single row describes one. */
   async listGroups(): Promise<Group[]> {
-    return decodeGroups(await this.withSheet((id) => this.api.getValues(id, wholeTab(GROUPS_TAB))));
+    return GROUPS_TAB.decode(await this.valuesOf(GROUPS_TAB));
   }
 
   async listAdjustments(): Promise<Map<string, Adjustment>> {
-    return decodeAdjustments(
-      await this.withSheet((id) => this.api.getValues(id, wholeTab(STUDENTS_TAB))),
-    );
+    return STUDENTS_TAB.adjustments(await this.valuesOf(STUDENTS_TAB));
   }
 
-  listSessions(): Promise<Session[]> {
-    return this.readTab(SESSIONS_TAB, decodeSession);
+  async listSessions(): Promise<Session[]> {
+    return SESSIONS_TAB.decode(await this.valuesOf(SESSIONS_TAB));
   }
 
-  listAttendance(): Promise<AttendanceRecord[]> {
-    return this.readTab(ATTENDANCE_TAB, decodeAttendance);
+  async listAttendance(): Promise<AttendanceRecord[]> {
+    return ATTENDANCE_TAB.decode(await this.valuesOf(ATTENDANCE_TAB));
   }
 
-  listBehavior(): Promise<BehaviorPoint[]> {
-    return this.readTab(BEHAVIOR_TAB, decodeBehavior);
+  async listBehavior(): Promise<BehaviorPoint[]> {
+    return BEHAVIOR_TAB.decode(await this.valuesOf(BEHAVIOR_TAB));
   }
 
   async listNotesLogs(): Promise<Map<string, string[]>> {
-    return decodeSummaryNotes(
-      await this.withSheet((id) => this.api.getValues(id, wholeTab(SUMMARY_TAB))),
-    );
+    return SUMMARY_TAB.notes(await this.valuesOf(SUMMARY_TAB));
   }
 
   /**
@@ -190,7 +171,7 @@ export class GoogleSheet implements SheetGateway {
   async syncGroupsGrid(students: readonly Student[]): Promise<void> {
     await this.withSheet(async (id) => {
       const values = await this.api.getValues(id, wholeTab(GROUPS_TAB));
-      const rows = groupsGridColumns(values, students);
+      const rows = GROUPS_TAB.columnsFor(values, students);
       if (rows.length === 0) return;
       // Row 1 is the header, so the Student rows start at row 2.
       const range = `${GROUPS_TAB.title}!A2:B${String(rows.length + 1)}`;
@@ -203,11 +184,11 @@ export class GoogleSheet implements SheetGateway {
   }
 
   async appendSession(session: Session): Promise<void> {
-    await this.append(SESSIONS_TAB, [encodeSession(session)]);
+    await this.append(SESSIONS_TAB, [SESSIONS_TAB.encode(session)]);
   }
 
   async appendAttendance(records: readonly AttendanceRecord[]): Promise<void> {
-    await this.append(ATTENDANCE_TAB, records.map(encodeAttendance));
+    await this.append(ATTENDANCE_TAB, records.map(ATTENDANCE_TAB.encode));
   }
 
   saveRollCall(rollCall: RollCall, snapshot: Snapshot): Promise<void> {
@@ -215,7 +196,7 @@ export class GoogleSheet implements SheetGateway {
   }
 
   async appendBehavior(point: BehaviorPoint): Promise<void> {
-    await this.append(BEHAVIOR_TAB, [encodeBehavior(point)]);
+    await this.append(BEHAVIOR_TAB, [BEHAVIOR_TAB.encode(point)]);
   }
 
   saveBehavior(point: BehaviorPoint, snapshot: Snapshot): Promise<void> {
@@ -233,7 +214,7 @@ export class GoogleSheet implements SheetGateway {
   async saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
     await this.withSheet(async (id) => {
       const existing = await this.api.getValues(id, wholeTab(SUMMARY_TAB));
-      const block = summaryBlock(summaries);
+      const block = SUMMARY_TAB.block(summaries);
       // Pad to whatever the tab already holds, so a shorter list blanks the
       // rows it no longer needs instead of leaving stale ones below.
       const width = SUMMARY_TAB.header.length;
@@ -242,7 +223,7 @@ export class GoogleSheet implements SheetGateway {
       for (let index = rows.length; index < existing.length - 1; index += 1) rows.push([...blank]);
       // Nothing to write and nothing already there: the tab is already right.
       if (rows.length === 0) return;
-      const range = `${SUMMARY_TAB.title}!A2:${SUMMARY_LAST_COLUMN}${String(rows.length + 1)}`;
+      const range = `${SUMMARY_TAB.title}!A2:${SUMMARY_TAB.lastColumn}${String(rows.length + 1)}`;
       await this.api.updateValues(id, range, rows);
     });
   }
@@ -265,12 +246,12 @@ export class GoogleSheet implements SheetGateway {
   async setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {
     await this.withSheet(async (id) => {
       const values = await this.api.getValues(id, wholeTab(ATTENDANCE_TAB));
-      const index = findAttendanceRow(values, sessionId, studentId);
+      const index = ATTENDANCE_TAB.rowOf(values, sessionId, studentId);
       if (index === -1) {
         throw new Error(`no attendance record for ${studentId} in ${sessionId}`);
       }
       // Sheet rows are 1-based.
-      const cell = `${ATTENDANCE_TAB.title}!${POINT_COLUMN}${String(index + 1)}`;
+      const cell = `${ATTENDANCE_TAB.title}!${ATTENDANCE_TAB.pointColumn}${String(index + 1)}`;
       await this.api.updateValues(id, cell, [[state]]);
     });
   }

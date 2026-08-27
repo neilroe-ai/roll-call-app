@@ -16,23 +16,6 @@ import {
   SESSIONS_TAB,
   STUDENTS_TAB,
   SUMMARY_TAB,
-  decodeAdjustments,
-  decodeAttendance,
-  decodeBehavior,
-  decodeGroups,
-  decodeSession,
-  decodeStudent,
-  decodeSummaryNotes,
-  decodeTab,
-  encodeAttendance,
-  encodeBehavior,
-  encodeSession,
-  encodeStudent,
-  findAttendanceRow,
-  groupIdForColumn,
-  groupsGridColumns,
-  summaryBlock,
-  POINT_INDEX,
   type SheetRow,
 } from './rows';
 import type { SheetGateway } from './sheetGateway';
@@ -62,21 +45,21 @@ export class FakeSheet implements SheetGateway {
     const groups = seed.groups ?? [];
     this.tabs.set(STUDENTS_TAB.title, [
       STUDENTS_TAB.header,
-      ...students.map((student) => encodeStudent(student, seed.adjustments?.get(student.id))),
+      ...students.map((student) => STUDENTS_TAB.encode(student, seed.adjustments?.get(student.id))),
     ]);
     this.tabs.set(GROUPS_TAB.title, groupGrid(students, groups));
     this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header]);
     this.tabs.set(SESSIONS_TAB.title, [
       SESSIONS_TAB.header,
-      ...(seed.sessions ?? []).map(encodeSession),
+      ...(seed.sessions ?? []).map(SESSIONS_TAB.encode),
     ]);
     this.tabs.set(ATTENDANCE_TAB.title, [
       ATTENDANCE_TAB.header,
-      ...(seed.attendance ?? []).map(encodeAttendance),
+      ...(seed.attendance ?? []).map(ATTENDANCE_TAB.encode),
     ]);
     this.tabs.set(BEHAVIOR_TAB.title, [
       BEHAVIOR_TAB.header,
-      ...(seed.behavior ?? []).map(encodeBehavior),
+      ...(seed.behavior ?? []).map(BEHAVIOR_TAB.encode),
     ]);
   }
 
@@ -107,36 +90,36 @@ export class FakeSheet implements SheetGateway {
   }
 
   listStudents(): Promise<Student[]> {
-    return Promise.resolve(decodeTab(this.rowsOf(STUDENTS_TAB.title), decodeStudent));
+    return Promise.resolve(STUDENTS_TAB.decode(this.rowsOf(STUDENTS_TAB.title)));
   }
 
   listGroups(): Promise<Group[]> {
-    return Promise.resolve(decodeGroups(this.rowsOf(GROUPS_TAB.title)));
+    return Promise.resolve(GROUPS_TAB.decode(this.rowsOf(GROUPS_TAB.title)));
   }
 
   listAdjustments(): Promise<Map<string, Adjustment>> {
-    return Promise.resolve(decodeAdjustments(this.rowsOf(STUDENTS_TAB.title)));
+    return Promise.resolve(STUDENTS_TAB.adjustments(this.rowsOf(STUDENTS_TAB.title)));
   }
 
   listSessions(): Promise<Session[]> {
-    return Promise.resolve(decodeTab(this.rowsOf(SESSIONS_TAB.title), decodeSession));
+    return Promise.resolve(SESSIONS_TAB.decode(this.rowsOf(SESSIONS_TAB.title)));
   }
 
   listAttendance(): Promise<AttendanceRecord[]> {
-    return Promise.resolve(decodeTab(this.rowsOf(ATTENDANCE_TAB.title), decodeAttendance));
+    return Promise.resolve(ATTENDANCE_TAB.decode(this.rowsOf(ATTENDANCE_TAB.title)));
   }
 
   listBehavior(): Promise<BehaviorPoint[]> {
-    return Promise.resolve(decodeTab(this.rowsOf(BEHAVIOR_TAB.title), decodeBehavior));
+    return Promise.resolve(BEHAVIOR_TAB.decode(this.rowsOf(BEHAVIOR_TAB.title)));
   }
 
   listNotesLogs(): Promise<Map<string, string[]>> {
-    return Promise.resolve(decodeSummaryNotes(this.rowsOf(SUMMARY_TAB.title)));
+    return Promise.resolve(SUMMARY_TAB.notes(this.rowsOf(SUMMARY_TAB.title)));
   }
 
   syncGroupsGrid(students: readonly Student[]): Promise<void> {
     const rows = this.rowsOf(GROUPS_TAB.title);
-    groupsGridColumns(rows, students).forEach((columns, index) => {
+    GROUPS_TAB.columnsFor(rows, students).forEach((columns, index) => {
       const existing = rows[index + 1] ?? [];
       rows[index + 1] = [...columns, ...existing.slice(2)];
     });
@@ -144,17 +127,17 @@ export class FakeSheet implements SheetGateway {
   }
 
   saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
-    this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header, ...summaryBlock(summaries)]);
+    this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header, ...SUMMARY_TAB.block(summaries)]);
     return Promise.resolve();
   }
 
   appendSession(session: Session): Promise<void> {
-    this.rowsOf(SESSIONS_TAB.title).push(encodeSession(session));
+    this.rowsOf(SESSIONS_TAB.title).push(SESSIONS_TAB.encode(session));
     return Promise.resolve();
   }
 
   appendAttendance(records: readonly AttendanceRecord[]): Promise<void> {
-    this.rowsOf(ATTENDANCE_TAB.title).push(...records.map(encodeAttendance));
+    this.rowsOf(ATTENDANCE_TAB.title).push(...records.map(ATTENDANCE_TAB.encode));
     return Promise.resolve();
   }
 
@@ -163,7 +146,7 @@ export class FakeSheet implements SheetGateway {
   }
 
   appendBehavior(point: BehaviorPoint): Promise<void> {
-    this.rowsOf(BEHAVIOR_TAB.title).push(encodeBehavior(point));
+    this.rowsOf(BEHAVIOR_TAB.title).push(BEHAVIOR_TAB.encode(point));
     return Promise.resolve();
   }
 
@@ -186,12 +169,13 @@ export class FakeSheet implements SheetGateway {
 
   setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {
     const rows = this.rowsOf(ATTENDANCE_TAB.title);
-    const index = findAttendanceRow(rows, sessionId, studentId);
+    const index = ATTENDANCE_TAB.rowOf(rows, sessionId, studentId);
     if (index === -1) {
       return Promise.reject(new Error(`no attendance record for ${studentId} in ${sessionId}`));
     }
     const found = rows[index] as SheetRow;
-    rows[index] = [...found.slice(0, POINT_INDEX), state, ...found.slice(POINT_INDEX + 1)];
+    const point = ATTENDANCE_TAB.pointIndex;
+    rows[index] = [...found.slice(0, point), state, ...found.slice(point + 1)];
     return Promise.resolve();
   }
 }
@@ -205,7 +189,7 @@ export class FakeSheet implements SheetGateway {
  * Better to fail here than to pass a test on data the Sheet cannot hold. */
 function groupGrid(students: readonly Student[], groups: readonly Group[]): SheetRow[] {
   groups.forEach((group, at) => {
-    const expected = groupIdForColumn(GROUPS_TAB.header.length + at);
+    const expected = GROUPS_TAB.idForColumn(GROUPS_TAB.header.length + at);
     if (group.id !== expected) {
       throw new Error(`seeded group "${group.name}" must have id ${expected}, got ${group.id}`);
     }
