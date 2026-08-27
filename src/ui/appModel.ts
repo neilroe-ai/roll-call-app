@@ -10,7 +10,7 @@
  * change once, through the listener given to the constructor.
  */
 import { calendarDateOf, awardBehavior, signOf } from '../domain/behavior';
-import { behaviorText, noteLine } from '../domain/notesLog';
+import { noteLine } from '../domain/notesLog';
 import type { CalendarDate } from '../domain/behavior';
 import {
   initialPointState,
@@ -22,17 +22,14 @@ import type { HeldPoint } from '../domain/heldPoints';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
 import type { Snapshot } from '../domain/snapshot';
-import type { PointsLedger } from '../domain/score';
 import {
   beginRollCall,
   mark,
-  recordsToSave,
   rememberRollCall,
   resumeRollCall,
   setNote,
   type RollCall,
 } from '../domain/rollCall';
-import { summarize, type StudentSummary } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
 import { noRollCallStore, type RollCallStore } from '../infra/rollCallStore';
 
@@ -223,10 +220,11 @@ export class AppModel {
       screen to try again. */
   async save(): Promise<void> {
     const rollCall = this.current.rollCall;
-    if (!rollCall) return;
+    const snapshot = this.current.snapshot;
+    if (!rollCall || !snapshot) return;
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
-      await this.sheet.saveRollCall(rollCall, this.summariesAfterSave(rollCall));
+      await this.sheet.saveRollCall(rollCall, snapshot);
       this.set({ rollCall: null, noteFor: null, view: 'groups' });
       await this.reload('Roll call saved.');
     } catch (error) {
@@ -254,15 +252,7 @@ export class AppModel {
 
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
-      const ledger: PointsLedger = {
-        attendance: snapshot.ledger.attendance,
-        behavior: [...snapshot.ledger.behavior, point],
-      };
-      const added = {
-        on: today,
-        byStudent: new Map([[student.id, behaviorText(pending.kind, point.note)]]),
-      };
-      await this.sheet.saveBehavior(point, summarize({ ...snapshot, ledger }, added));
+      await this.sheet.saveBehavior(point, snapshot);
       this.set({ pendingBehavior: null });
       await this.reload(`${signOf(pending.kind)} for ${student.name}.`);
     } catch (error) {
@@ -285,20 +275,7 @@ export class AppModel {
 
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
-      const ledger: PointsLedger = {
-        attendance: snapshot.ledger.attendance.map((record) =>
-          record.sessionId === held.sessionId && record.studentId === held.studentId
-            ? { ...record, pointState: state }
-            : record,
-        ),
-        behavior: snapshot.ledger.behavior,
-      };
-      await this.sheet.resolveHeldPoint(
-        held.sessionId,
-        held.studentId,
-        state,
-        summarize({ ...snapshot, ledger }),
-      );
+      await this.sheet.resolveHeldPoint(held.sessionId, held.studentId, state, snapshot);
       await this.reload(`${held.studentName}: point ${state}.`);
     } catch (error) {
       this.fail(error);
@@ -319,9 +296,7 @@ export class AppModel {
     }
     this.set({ noteFor: null, busy: true, message: { text: 'Saving…', isError: false } });
     try {
-      await this.sheet.saveStudentSummaries(
-        summarize(snapshot, { on: today, byStudent: new Map([[student.id, text]]) }),
-      );
+      await this.sheet.saveNote(student.id, text, today, snapshot);
       await this.reload('Note saved.');
     } catch (error) {
       this.fail(error);
@@ -331,26 +306,6 @@ export class AppModel {
   /** The date where the teacher is standing. */
   private today(): CalendarDate {
     return calendarDateOf(this.clock.now());
-  }
-
-  /** The Summary tab as it should read once this roll call is in. Worked out
-      from the Ledger the save is about to create, not from what the Sheet says
-      now, so one write leaves the report correct. */
-  private summariesAfterSave(rollCall: RollCall): StudentSummary[] {
-    const snapshot = this.current.snapshot;
-    if (!snapshot) return [];
-    const ledger: PointsLedger = {
-      attendance: [...snapshot.ledger.attendance, ...recordsToSave(rollCall)],
-      behavior: snapshot.ledger.behavior,
-    };
-    // The Session being saved is not in `snapshot.sessions` yet, but it has just
-    // happened: leaving it out would rate every Student against one Session
-    // fewer than they were actually at.
-    const sessions = [...snapshot.sessions, rollCall.session];
-    return summarize(
-      { ...snapshot, ledger, sessions },
-      { on: this.today(), byStudent: rollCall.notes },
-    );
   }
 
   /** Read the Sheet back, and report the action that led here.

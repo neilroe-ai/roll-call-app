@@ -4,7 +4,7 @@
  * the real Sheet and catches mapping bugs the real gateway would hit.
  */
 import type { Adjustment } from '../domain/adjustment';
-import type { BehaviorPoint } from '../domain/behavior';
+import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import { isMember, type Group, type Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
@@ -40,6 +40,7 @@ import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
 import { writeBehavior } from './writeBehavior';
 import { writeHeldPoint } from './writeHeldPoint';
+import { writeNote } from './writeNote';
 import type { RollCall } from '../domain/rollCall';
 
 export interface FakeSheetSeed {
@@ -157,8 +158,8 @@ export class FakeSheet implements SheetGateway {
     return Promise.resolve();
   }
 
-  saveRollCall(rollCall: RollCall, summaries: readonly StudentSummary[]): Promise<void> {
-    return writeRollCall(this, rollCall, summaries);
+  saveRollCall(rollCall: RollCall, snapshot: Snapshot): Promise<void> {
+    return writeRollCall(this, rollCall, snapshot);
   }
 
   appendBehavior(point: BehaviorPoint): Promise<void> {
@@ -166,17 +167,21 @@ export class FakeSheet implements SheetGateway {
     return Promise.resolve();
   }
 
-  saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
-    return writeBehavior(this, point, summaries);
+  saveBehavior(point: BehaviorPoint, snapshot: Snapshot): Promise<void> {
+    return writeBehavior(this, point, snapshot);
   }
 
   resolveHeldPoint(
     sessionId: string,
     studentId: string,
     state: PointState,
-    summaries: readonly StudentSummary[],
+    snapshot: Snapshot,
   ): Promise<void> {
-    return writeHeldPoint(this, sessionId, studentId, state, summaries);
+    return writeHeldPoint(this, sessionId, studentId, state, snapshot);
+  }
+
+  saveNote(studentId: string, text: string, on: CalendarDate, snapshot: Snapshot): Promise<void> {
+    return writeNote(this, studentId, text, on, snapshot);
   }
 
   setPointState(sessionId: string, studentId: string, state: PointState): Promise<void> {

@@ -105,6 +105,9 @@ their Score, the Sessions they could have been at, their Attendance Counts with
 each one's share, and their Notes Log. Every figure is worked out from the
 Points Ledger and the Student's Adjustment, so the app rewrites the whole
 summary on each save. Nothing reads a total back out of it.
+Because every figure is derived, the app can work out what a summary will say
+once an action lands without reading the Sheet again — which is how a Score and
+the action that moved it reach the Sheet in one write.
 _Avoid_: stats, report card
 
 **Snapshot**:

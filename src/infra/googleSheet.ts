@@ -5,7 +5,7 @@
  * The id is remembered per device; a device that has never signed in makes one.
  */
 import type { Adjustment } from '../domain/adjustment';
-import type { BehaviorPoint } from '../domain/behavior';
+import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
@@ -43,6 +43,7 @@ import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
 import { writeBehavior } from './writeBehavior';
 import { writeHeldPoint } from './writeHeldPoint';
+import { writeNote } from './writeNote';
 import type { RollCall } from '../domain/rollCall';
 
 export const SHEET_TITLE = 'Roll Call';
@@ -209,16 +210,16 @@ export class GoogleSheet implements SheetGateway {
     await this.append(ATTENDANCE_TAB, records.map(encodeAttendance));
   }
 
-  saveRollCall(rollCall: RollCall, summaries: readonly StudentSummary[]): Promise<void> {
-    return writeRollCall(this, rollCall, summaries);
+  saveRollCall(rollCall: RollCall, snapshot: Snapshot): Promise<void> {
+    return writeRollCall(this, rollCall, snapshot);
   }
 
   async appendBehavior(point: BehaviorPoint): Promise<void> {
     await this.append(BEHAVIOR_TAB, [encodeBehavior(point)]);
   }
 
-  saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void> {
-    return writeBehavior(this, point, summaries);
+  saveBehavior(point: BehaviorPoint, snapshot: Snapshot): Promise<void> {
+    return writeBehavior(this, point, snapshot);
   }
 
   /**
@@ -250,9 +251,13 @@ export class GoogleSheet implements SheetGateway {
     sessionId: string,
     studentId: string,
     state: PointState,
-    summaries: readonly StudentSummary[],
+    snapshot: Snapshot,
   ): Promise<void> {
-    return writeHeldPoint(this, sessionId, studentId, state, summaries);
+    return writeHeldPoint(this, sessionId, studentId, state, snapshot);
+  }
+
+  saveNote(studentId: string, text: string, on: CalendarDate, snapshot: Snapshot): Promise<void> {
+    return writeNote(this, studentId, text, on, snapshot);
   }
 
   /** Resolve a held point by overwriting one cell. The row is found by reading

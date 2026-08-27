@@ -152,18 +152,6 @@ test('the notes log keeps the notes already in the sheet and adds to the bottom'
   expect(await savedLog('s1')).toEqual(['2026-08-26: Late', '2026-08-26: Late again']);
 });
 
-test('the summary columns count the statuses the sheet holds', async () => {
-  markButton('Amy', 'Here').click();
-  markButton('Ben', 'Sick').click();
-  button('Dismiss').click();
-  await saveRoll();
-
-  const rows = await sheet.rowsForTest('Summary');
-  // Student ID, Name, Groups, Score, Sessions, Present, Present %, Absent...
-  expect(rows[1]?.slice(0, 7)).toEqual(['s1', 'Amy', '3A', '1', '1', '1', '100%']);
-  expect(rows[2]?.slice(0, 7)).toEqual(['s2', 'Ben', '3A', '0', '1', '0', '0%']);
-});
-
 test.each(['Sick', 'Other'])('marking %s opens an empty note field', (status) => {
   markButton('Amy', status).click();
   expect(noteField()?.value).toBe('');

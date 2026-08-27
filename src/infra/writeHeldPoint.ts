@@ -6,13 +6,15 @@
  * rewritten from a decision that never landed would claim a Score the Points
  * Ledger cannot back. A failure between the two costs a stale report and
  * nothing else, because every figure on the Summary tab is worked out from the
- * Ledger.
+ * Ledger — here, from the Snapshot the point was settled against.
  *
  * Nothing here needs a read-back guard. Setting a Point State overwrites one
  * cell rather than appending a row, so writing it twice leaves the same Sheet
  * as writing it once.
  */
 import type { PointState } from '../domain/points';
+import type { Snapshot } from '../domain/snapshot';
+import { afterResolvedHeldPoint } from '../domain/summariesAfter';
 import type { StudentSummary } from '../domain/studentSummary';
 
 /** What resolving a Held Point needs of the Sheet. Not part of the port — these
@@ -27,8 +29,8 @@ export async function writeHeldPoint(
   sessionId: string,
   studentId: string,
   state: PointState,
-  summaries: readonly StudentSummary[],
+  snapshot: Snapshot,
 ): Promise<void> {
   await sheet.setPointState(sessionId, studentId, state);
-  await sheet.saveStudentSummaries(summaries);
+  await sheet.saveStudentSummaries(afterResolvedHeldPoint(snapshot, sessionId, studentId, state));
 }

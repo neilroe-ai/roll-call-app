@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { AppModel, type Clock } from './appModel';
 import { FakeSheet } from '../infra/fakeSheet';
+import { SUMMARY_TAB } from '../infra/rows';
 import type { SheetGateway } from '../infra/sheetGateway';
 import type { RollCallStore } from '../infra/rollCallStore';
 import { markOf, noteOf, type SavedRollCall } from '../domain/rollCall';
@@ -260,7 +261,7 @@ describe('settling a held point', () => {
     expect(before).toBe(0);
     // The Summary tab the teacher opens, not just the screen, has the point.
     const rows = await sheet.rowsForTest('Summary');
-    expect(rows[1]?.[3]).toBe('1');
+    expect(rows[1]?.[SUMMARY_TAB.header.indexOf('Score')]).toBe('1');
   });
 
   it('leaves the point held and says why when the write fails', async () => {
