@@ -42,3 +42,12 @@ export const BEHAVIOR_KINDS: readonly BehaviorKind[] = ['positive', 'negative'];
 export function behaviorPoints(kind: BehaviorKind): number {
   return kind === 'positive' ? 1 : -1;
 }
+
+/** A Student's Attendance Counts: how many Sessions they took each Attendance
+    Status in. */
+export type AttendanceCounts = Record<AttendanceStatus, number>;
+
+/** Every Attendance Status at zero — the starting point for any tally. */
+export function emptyCounts(): AttendanceCounts {
+  return Object.fromEntries(STATUSES.map((status) => [status, 0])) as AttendanceCounts;
+}

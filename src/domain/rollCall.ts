@@ -9,6 +9,9 @@
  * Notes are kept apart from marks so one can be written before the other, and
  * a Note survives a change of status: it explains the Student, not the tap. A
  * Note on an unmarked Student is saved too, to that Student's Notes Log.
+ *
+ * A roll call in progress can also be written down and picked back up, so a
+ * reload mid-marking loses neither the marks nor the Session's identity.
  */
 import type { AttendanceStatus } from './points';
 import { membersOf, type Group, type Student } from './group';
@@ -27,7 +30,11 @@ export interface RollCall {
 
 /** Begin marking a Group. Ids with no matching Student are left out of the roll
     rather than shown as a blank row. */
-export function beginRollCall(session: Session, group: Group, students: Student[]): RollCall {
+export function beginRollCall(
+  session: Session,
+  group: Group,
+  students: readonly Student[],
+): RollCall {
   return { session, roll: membersOf(group, students), marks: new Map(), notes: new Map() };
 }
 
@@ -99,4 +106,45 @@ export function recordsToSave(rollCall: RollCall): AttendanceRecord[] {
   return rollCall.roll
     .map((student) => rollCall.marks.get(student.id))
     .filter((record): record is AttendanceRecord => record !== undefined);
+}
+
+/** A roll call in progress, small enough to keep on the device.
+    The roll itself is not kept: it is rebuilt from the Sheet on the way back,
+    so a Student added to the Group meanwhile is there to mark and one removed
+    is gone. Only what the teacher chose is worth keeping. */
+export interface SavedRollCall {
+  session: Session;
+  /** What was marked so far, as pairs so it survives being written down. */
+  marks: [studentId: string, status: AttendanceStatus][];
+  /** Notes so far, as pairs, including any on an unmarked Student. */
+  notes: [studentId: string, note: string][];
+}
+
+/** Write a roll call in progress down. */
+export function rememberRollCall(rollCall: RollCall): SavedRollCall {
+  return {
+    session: rollCall.session,
+    marks: [...rollCall.marks].map(([studentId, record]) => [studentId, record.status]),
+    notes: [...rollCall.notes],
+  };
+}
+
+/** Pick a written-down roll call back up against the Sheet as it now reads.
+    The Session keeps its id, so saving the resumed roll call is the same write
+    as saving the original and cannot count a Student twice. A Group that has
+    since gone gives `undefined`: there is nothing left to mark. */
+export function resumeRollCall(
+  saved: SavedRollCall,
+  groups: readonly Group[],
+  students: readonly Student[],
+): RollCall | undefined {
+  const group = groups.find((candidate) => candidate.id === saved.session.groupId);
+  if (!group) return undefined;
+
+  let rollCall = beginRollCall(saved.session, group, students);
+  for (const [studentId, note] of saved.notes) rollCall = setNote(rollCall, studentId, note);
+  // Marks last: a mark carries whatever Note the Student already has onto the
+  // Attendance Record, the same way marking after typing does.
+  for (const [studentId, status] of saved.marks) rollCall = mark(rollCall, studentId, status);
+  return rollCall;
 }

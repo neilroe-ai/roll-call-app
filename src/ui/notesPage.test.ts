@@ -12,7 +12,7 @@ const STUDENTS = [
   { id: 's1', name: 'Amy' },
   { id: 's2', name: 'Ben' },
 ];
-const GROUP = { id: 'g1', name: '3A', studentIds: ['s1', 's2'] };
+const GROUP = { id: 'G1', name: '3A', studentIds: ['s1', 's2'] };
 
 const clock: Clock = {
   now: () => new Date(2026, 7, 26, 9, 5),
@@ -70,7 +70,7 @@ test('saves a note with no roll call in progress', async () => {
   await writeNote('Amy', 'Parents asked about the trip');
 
   expect(await sheet.listSessions()).toHaveLength(0);
-  expect((await sheet.listStudentNotes()).get('s1')).toEqual([
+  expect((await sheet.listNotesLogs()).get('s1')).toEqual([
     '2026-08-26: Parents asked about the trip',
   ]);
 });
@@ -79,7 +79,7 @@ test('adds to the bottom of the log rather than replacing it', async () => {
   await writeNote('Amy', 'First');
   await writeNote('Amy', 'Second');
 
-  expect(await sheet.listStudentNotes().then((notes) => notes.get('s1'))).toEqual([
+  expect(await sheet.listNotesLogs().then((notes) => notes.get('s1'))).toEqual([
     '2026-08-26: First',
     '2026-08-26: Second',
   ]);
@@ -87,14 +87,14 @@ test('adds to the bottom of the log rather than replacing it', async () => {
 
 test('leaves the other students alone', async () => {
   await writeNote('Amy', 'Only about Amy');
-  expect((await sheet.listStudentNotes()).get('s2') ?? []).toEqual([]);
+  expect((await sheet.listNotesLogs()).get('s2') ?? []).toEqual([]);
 });
 
 test('an empty note writes nothing', async () => {
   byLabel('Add note for Amy').click();
   button('Save note').click();
   expect(notesOnScreen()).toEqual([]);
-  expect((await sheet.listStudentNotes()).get('s1') ?? []).toEqual([]);
+  expect((await sheet.listNotesLogs()).get('s1') ?? []).toEqual([]);
 });
 
 test('dismissing writes nothing', async () => {
@@ -104,5 +104,5 @@ test('dismissing writes nothing', async () => {
   field.value = 'typed but dismissed';
   button('Dismiss').click();
   expect(notesOnScreen()).toEqual([]);
-  expect((await sheet.listStudentNotes()).get('s1') ?? []).toEqual([]);
+  expect((await sheet.listNotesLogs()).get('s1') ?? []).toEqual([]);
 });

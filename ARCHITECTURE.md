@@ -36,3 +36,6 @@ Architecture decisions with lasting consequences are recorded as ADRs under
 - [0004 — The app creates its own Sheet](docs/adr/0004-the-app-creates-its-own-sheet.md)
 - [0005 — No UI framework](docs/adr/0005-no-ui-framework.md)
 - [0006 — Vite as the build tool](docs/adr/0006-vite-as-the-build-tool.md)
+- [0007 — Who owns which cells](docs/adr/0007-tab-ownership.md)
+- [0008 — The Sheet port is one read and three writes](docs/adr/0008-one-read-and-three-writes.md)
+- [0009 — A roll call in progress lives on the device](docs/adr/0009-a-roll-call-in-progress-lives-on-the-device.md)

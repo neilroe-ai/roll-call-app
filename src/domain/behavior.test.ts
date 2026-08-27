@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { awardBehavior, behaviorNote, calendarDateOf, signOf } from './behavior';
+import { awardBehavior, calendarDateOf, signOf } from './behavior';
 
 describe('calendarDateOf', () => {
   it('uses the date where the teacher is, not the date in UTC', () => {
@@ -35,13 +35,9 @@ describe('awardBehavior', () => {
   });
 });
 
-describe('signOf and behaviorNote', () => {
+describe('signOf', () => {
   it('signs the point the way the teacher reads it', () => {
     expect(signOf('positive')).toBe('+1');
     expect(signOf('negative')).toBe('-1');
-  });
-
-  it('puts the sign in front of the note', () => {
-    expect(behaviorNote('positive', 'helped a classmate')).toBe('+1 helped a classmate');
   });
 });

@@ -2,6 +2,7 @@
  * Scores, and the records they come from.
  */
 import { attendancePoints, behaviorPoints } from './points';
+import type { Adjustment } from './adjustment';
 import type { BehaviorPoint } from './behavior';
 import type { AttendanceRecord } from './session';
 
@@ -14,10 +15,10 @@ export interface PointsLedger {
 
 export const EMPTY_LEDGER: PointsLedger = { attendance: [], behavior: [] };
 
-/** A Student's single running total: attendance points plus behavior points.
-    Held points count as 0 until the teacher resolves them, so a Score can rise
-    later without any new roll call. */
-export function scoreFor(studentId: string, ledger: PointsLedger): number {
+/** A Student's single running total: attendance points, plus behavior points,
+    plus whatever the teacher adjusted by hand. Held points count as 0 until the
+    teacher resolves them, so a Score can rise later without any new roll call. */
+export function scoreFor(studentId: string, ledger: PointsLedger, adjustment: Adjustment): number {
   const fromAttendance = ledger.attendance
     .filter((record) => record.studentId === studentId)
     .reduce((total, record) => total + attendancePoints(record.pointState), 0);
@@ -26,5 +27,5 @@ export function scoreFor(studentId: string, ledger: PointsLedger): number {
     .filter((point) => point.studentId === studentId)
     .reduce((total, point) => total + behaviorPoints(point.kind), 0);
 
-  return fromAttendance + fromBehavior;
+  return fromAttendance + fromBehavior + adjustment.points;
 }
