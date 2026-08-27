@@ -1,0 +1,5 @@
+# The full gate, before anything reaches GitHub. CI runs the same `npm run
+# check`, but this repo is private on a free plan, so GitHub cannot require a
+# green check before a merge — nothing downstream will stop a red branch.
+# Catching it here is the only enforcement there is.
+npm run check
