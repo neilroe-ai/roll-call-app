@@ -12,7 +12,13 @@
 import { calendarDateOf, awardBehavior, signOf } from '../domain/behavior';
 import { behaviorText, noteLine } from '../domain/notesLog';
 import type { CalendarDate } from '../domain/behavior';
-import { initialPointState, type AttendanceStatus, type BehaviorKind } from '../domain/points';
+import {
+  initialPointState,
+  resolveHeld,
+  type AttendanceStatus,
+  type BehaviorKind,
+} from '../domain/points';
+import type { HeldPoint } from '../domain/heldPoints';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
 import type { Snapshot } from '../domain/snapshot';
@@ -30,7 +36,7 @@ import { summarize, type StudentSummary } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
 import { noRollCallStore, type RollCallStore } from '../infra/rollCallStore';
 
-export type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes' | 'behavior';
+export type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes' | 'behavior' | 'held';
 
 /** A Behavior Point the teacher has chosen but not yet written, while they
     decide whether to explain it. It has its id from the moment it is chosen, so
@@ -261,6 +267,40 @@ export class AppModel {
       await this.reload(`${signOf(pending.kind)} for ${student.name}.`);
     } catch (error) {
       this.set({ pendingBehavior: { ...pending, note: text } });
+      this.fail(error);
+    }
+  }
+
+  /** Settle a Held Point once the teacher knows whether the documentation
+      arrived. The Score moves the moment the state lands, so the Summary tab
+      goes with it in one write.
+
+      Nothing is remembered between the tap and the write. The Record is named
+      by its Session and its Student, and a Point State overwrites one cell, so
+      an attempt that fails can simply be tapped again. */
+  async resolveHeldPoint(held: HeldPoint, documentationProvided: boolean): Promise<void> {
+    const data = this.current.data;
+    if (!data) return;
+    const state = resolveHeld(documentationProvided);
+
+    this.set({ busy: true, message: { text: 'Saving…', isError: false } });
+    try {
+      const ledger: PointsLedger = {
+        attendance: data.ledger.attendance.map((record) =>
+          record.sessionId === held.sessionId && record.studentId === held.studentId
+            ? { ...record, pointState: state }
+            : record,
+        ),
+        behavior: data.ledger.behavior,
+      };
+      await this.sheet.resolveHeldPoint(
+        held.sessionId,
+        held.studentId,
+        state,
+        summarize({ ...data, ledger }),
+      );
+      await this.reload(`${held.studentName}: point ${state}.`);
+    } catch (error) {
       this.fail(error);
     }
   }

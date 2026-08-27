@@ -37,6 +37,14 @@ export interface SheetGateway {
       exactly these summaries and nothing else — an empty list clears it. */
   saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
 
-  /** Resolve a held point later. Throws if no such record exists. */
-  setPointState(sessionId: string, studentId: string, state: PointState): Promise<void>;
+  /** Settle a Held Point once the teacher knows whether the documentation
+      arrived: the Attendance Record's Point State and the Summary it changes.
+      The Score moves the moment the state lands, so the Summary follows it.
+      Throws if no such record exists. */
+  resolveHeldPoint(
+    sessionId: string,
+    studentId: string,
+    state: PointState,
+    summaries: readonly StudentSummary[],
+  ): Promise<void>;
 }

@@ -39,3 +39,4 @@ Architecture decisions with lasting consequences are recorded as ADRs under
 - [0007 — Who owns which cells](docs/adr/0007-tab-ownership.md)
 - [0008 — The Sheet port is one read and three writes](docs/adr/0008-one-read-and-three-writes.md)
 - [0009 — A roll call in progress lives on the device](docs/adr/0009-a-roll-call-in-progress-lives-on-the-device.md)
+- [0010 — Resolving a Held Point is one write](docs/adr/0010-resolving-a-held-point-is-one-write.md)

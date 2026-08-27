@@ -10,6 +10,7 @@ import { BEHAVIOR_KINDS, STATUSES, type AttendanceStatus } from '../domain/point
 import { signOf } from '../domain/behavior';
 import type { Student } from '../domain/group';
 import { markOf, noteOf, remaining } from '../domain/rollCall';
+import { heldPoints, type HeldPoint } from '../domain/heldPoints';
 import { scoreboard } from '../domain/scoreboard';
 import { shareText, summarize } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
@@ -57,6 +58,12 @@ function element<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/** When the roll was taken, or an honest blank when the Session row never
+    landed and there is no date to give. */
+function whenOf(held: HeldPoint): string {
+  return held.on ?? 'date unknown';
+}
+
 function noStudents(): HTMLElement {
   return element('p', 'muted', 'No students yet. Add rows to the Students tab of your Sheet.');
 }
@@ -102,6 +109,7 @@ export class App {
 
     if (!data) return;
     if (view === 'rollCall' && state.rollCall) this.root.append(...this.renderRollCall(state));
+    else if (view === 'held') this.root.append(...this.renderHeld(data));
     else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(data));
     else if (view === 'summary') this.root.append(...this.renderSummary(data, state.asShare));
     else if (view === 'notes') this.root.append(...this.renderNotes(data, state.noteFor));
@@ -120,9 +128,14 @@ export class App {
 
   private renderNav(state: AppState): HTMLElement {
     const nav = element('nav');
+    // Held Points expire never and announce themselves nowhere else, so the
+    // count rides on the tab: a backlog nobody can see is a backlog nobody
+    // settles.
+    const waiting = state.data ? heldPoints(state.data).length : 0;
     const tabs: [View, string][] = [
       ['groups', 'Take roll'],
       ['behavior', 'Behavior'],
+      ['held', waiting === 0 ? 'Held' : `Held (${String(waiting)})`],
       ['summary', 'Summary'],
       ['notes', 'Notes'],
       ['scoreboard', 'Scoreboard'],
@@ -440,6 +453,60 @@ export class App {
       list.append(item);
     }
     return [heading, hint, list];
+  }
+
+  /** Every Held Point still waiting, and the two answers that settle it. The
+      teacher decides one thing here — did the documentation arrive — so the
+      row carries what she needs to answer it and nothing else. */
+  private renderHeld(data: Snapshot): HTMLElement[] {
+    const waiting = heldPoints(data);
+    const heading = element('h1', undefined, 'Held points');
+    if (waiting.length === 0) {
+      return [heading, element('p', 'muted', 'Nothing waiting. Every point is settled.')];
+    }
+    const hint = element(
+      'p',
+      'muted',
+      'A sick note or paperwork turns a held point into a point. Nothing expires, so these wait until you say.',
+    );
+
+    const list = element('ul');
+    for (const held of waiting) list.append(this.renderHeldPoint(held));
+    return [heading, hint, list];
+  }
+
+  private renderHeldPoint(held: HeldPoint): HTMLElement {
+    const item = element('li');
+    const top = element('div', 'roll-row');
+    top.append(element('h2', 'name', held.studentName));
+
+    const buttons = element('div', 'marks');
+    for (const [documented, label] of [
+      [true, 'Award'],
+      [false, 'Deny'],
+    ] as [boolean, string][]) {
+      const button = element('button', undefined, label);
+      button.setAttribute(
+        'aria-label',
+        `${label} ${held.studentName}'s point from ${whenOf(held)}`,
+      );
+      button.addEventListener('click', () => {
+        void this.model.resolveHeldPoint(held, documented);
+      });
+      buttons.append(button);
+    }
+    top.append(buttons);
+    item.append(top);
+
+    item.append(element('p', 'held-when', `${whenOf(held)} — ${STATUS_LABEL[held.status]}`));
+    // The Note reads the same here as it does in a Notes Log: it is the same
+    // sentence the teacher wrote, and two shapes would read as two things.
+    if (held.note !== undefined) {
+      const log = element('ul', 'note-log');
+      log.append(element('li', undefined, held.note));
+      item.append(log);
+    }
+    return item;
   }
 
   private renderScoreboard(data: Snapshot): HTMLElement[] {
