@@ -77,14 +77,6 @@ export function noteOf(rollCall: RollCall, studentId: string): string | undefine
   return rollCall.notes.get(studentId);
 }
 
-/** Undo a mark, putting the Student back among the unmarked. The Note stays:
-    the teacher wrote it about the Student, not about the tap. */
-export function unmark(rollCall: RollCall, studentId: string): RollCall {
-  const marks = new Map(rollCall.marks);
-  marks.delete(studentId);
-  return { ...rollCall, marks };
-}
-
 /** What the teacher chose for a Student, if anything yet. */
 export function markOf(rollCall: RollCall, studentId: string): AttendanceRecord | undefined {
   return rollCall.marks.get(studentId);
@@ -93,11 +85,6 @@ export function markOf(rollCall: RollCall, studentId: string): AttendanceRecord 
 /** Students still to mark, in roll order. */
 export function remaining(rollCall: RollCall): Student[] {
   return rollCall.roll.filter((student) => !rollCall.marks.has(student.id));
-}
-
-/** Every Student marked. Only then is the roll call worth saving. */
-export function isComplete(rollCall: RollCall): boolean {
-  return remaining(rollCall).length === 0;
 }
 
 /** The records to write, in roll order rather than tap order, so the Sheet

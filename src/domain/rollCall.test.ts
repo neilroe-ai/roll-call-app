@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   beginRollCall,
-  isComplete,
   mark,
   markOf,
   noteOf,
@@ -10,7 +9,6 @@ import {
   resumeRollCall,
   setNote,
   remaining,
-  unmark,
 } from './rollCall';
 import type { Group, Student } from './group';
 import type { Session } from './session';
@@ -37,7 +35,7 @@ describe('beginRollCall', () => {
 
   it('starts with nothing marked', () => {
     expect(begin().marks.size).toBe(0);
-    expect(isComplete(begin())).toBe(false);
+    expect(remaining(begin())).toHaveLength(2);
   });
 });
 
@@ -96,27 +94,14 @@ describe('setNote', () => {
   });
 });
 
-describe('unmark', () => {
-  it('puts the student back among the remaining', () => {
-    const marked = mark(begin(), 's1', 'present');
-    expect(remaining(unmark(marked, 's1')).map((student) => student.id)).toEqual(['s2', 's1']);
-  });
-
-  it('keeps the note, which is about the student not the tap', () => {
-    const marked = setNote(mark(begin(), 's1', 'sick'), 's1', 'flu');
-    expect(noteOf(unmark(marked, 's1'), 's1')).toBe('flu');
-  });
-});
-
-describe('remaining and isComplete', () => {
+describe('remaining', () => {
   it('counts down in roll order', () => {
     const marked = mark(begin(), 's1', 'present');
     expect(remaining(marked).map((student) => student.id)).toEqual(['s2']);
   });
 
-  it('is complete once everyone on the roll is marked', () => {
+  it('is empty once everyone on the roll is marked', () => {
     const done = mark(mark(begin(), 's1', 'present'), 's2', 'absent');
-    expect(isComplete(done)).toBe(true);
     expect(remaining(done)).toEqual([]);
   });
 });
