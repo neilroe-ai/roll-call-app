@@ -18,6 +18,7 @@ import {
   encodeStudent,
   decodeNotes,
   decodeSummaryNotes,
+  columnLetter,
   groupIdForColumn,
   groupsGridColumns,
   isTicked,
@@ -330,5 +331,36 @@ describe('encodeStudent', () => {
 
     expect(row).toEqual(['s1', 'Ana', '4', '3', '2', '1', '0']);
     expect(decodeAdjustment(row, 2)).toEqual(adjustment);
+  });
+});
+
+describe('columnLetter', () => {
+  it('names the single-letter columns', () => {
+    expect(columnLetter(0)).toBe('A');
+    expect(columnLetter(3)).toBe('D');
+    expect(columnLetter(25)).toBe('Z');
+  });
+
+  it('carries past Z instead of running into the punctuation', () => {
+    // Counting up from 'A' gives '[' here, and the Sheets API rejects the
+    // range rather than misreading it.
+    expect(columnLetter(26)).toBe('AA');
+    expect(columnLetter(27)).toBe('AB');
+    expect(columnLetter(51)).toBe('AZ');
+    expect(columnLetter(52)).toBe('BA');
+  });
+
+  it('carries a second time', () => {
+    expect(columnLetter(701)).toBe('ZZ');
+    expect(columnLetter(702)).toBe('AAA');
+  });
+
+  it('refuses an index that is not a whole number from zero', () => {
+    expect(() => columnLetter(-1)).toThrow(/whole number/);
+    expect(() => columnLetter(1.5)).toThrow(/whole number/);
+  });
+
+  it('gives the summary tab a range the api accepts', () => {
+    expect(columnLetter(SUMMARY_TAB.header.length - 1)).toBe('N');
   });
 });
