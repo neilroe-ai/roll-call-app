@@ -58,7 +58,7 @@ export interface Message {
 /** Everything on screen, in one place. */
 export interface AppState {
   view: View;
-  data: Snapshot | null;
+  snapshot: Snapshot | null;
   rollCall: RollCall | null;
   /** The Student whose Note field is open, if any. Only one at a time. */
   noteFor: string | null;
@@ -90,7 +90,7 @@ function reasonFor(error: unknown): string {
 
 const INITIAL: AppState = {
   view: 'groups',
-  data: null,
+  snapshot: null,
   rollCall: null,
   noteFor: null,
   pendingBehavior: null,
@@ -127,11 +127,11 @@ export class AppModel {
       A failed read leaves it kept for the next try. A Group that has gone means
       there is nothing left to mark, so it is dropped. */
   private resume(): void {
-    const data = this.current.data;
+    const snapshot = this.current.snapshot;
     const kept = this.store.kept();
-    if (!data || !kept) return;
+    if (!snapshot || !kept) return;
 
-    const rollCall = resumeRollCall(kept, data.groups, data.students);
+    const rollCall = resumeRollCall(kept, snapshot.groups, snapshot.students);
     if (!rollCall) {
       this.store.forget();
       return;
@@ -157,15 +157,15 @@ export class AppModel {
   }
 
   startRollCall(group: Group): void {
-    const data = this.current.data;
-    if (!data) return;
+    const snapshot = this.current.snapshot;
+    if (!snapshot) return;
     const session: Session = {
       id: this.clock.newId(),
       groupId: group.id,
       takenAt: this.clock.now().toISOString(),
     };
     this.set({
-      rollCall: beginRollCall(session, group, data.students),
+      rollCall: beginRollCall(session, group, snapshot.students),
       noteFor: null,
       view: 'rollCall',
       message: null,
@@ -243,10 +243,10 @@ export class AppModel {
       tapping Save again is the same write. The Sheet reads it back by that id
       and appends nothing it already holds. */
   async saveBehavior(text: string): Promise<void> {
-    const data = this.current.data;
+    const snapshot = this.current.snapshot;
     const pending = this.current.pendingBehavior;
-    if (!data || !pending) return;
-    const student = data.students.find((candidate) => candidate.id === pending.studentId);
+    if (!snapshot || !pending) return;
+    const student = snapshot.students.find((candidate) => candidate.id === pending.studentId);
     if (!student) return;
 
     const today = this.today();
@@ -255,14 +255,14 @@ export class AppModel {
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
       const ledger: PointsLedger = {
-        attendance: data.ledger.attendance,
-        behavior: [...data.ledger.behavior, point],
+        attendance: snapshot.ledger.attendance,
+        behavior: [...snapshot.ledger.behavior, point],
       };
       const added = {
         on: today,
         byStudent: new Map([[student.id, behaviorText(pending.kind, point.note)]]),
       };
-      await this.sheet.saveBehavior(point, summarize({ ...data, ledger }, added));
+      await this.sheet.saveBehavior(point, summarize({ ...snapshot, ledger }, added));
       this.set({ pendingBehavior: null });
       await this.reload(`${signOf(pending.kind)} for ${student.name}.`);
     } catch (error) {
@@ -279,25 +279,25 @@ export class AppModel {
       by its Session and its Student, and a Point State overwrites one cell, so
       an attempt that fails can simply be tapped again. */
   async resolveHeldPoint(held: HeldPoint, documentationProvided: boolean): Promise<void> {
-    const data = this.current.data;
-    if (!data) return;
+    const snapshot = this.current.snapshot;
+    if (!snapshot) return;
     const state = resolveHeld(documentationProvided);
 
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
       const ledger: PointsLedger = {
-        attendance: data.ledger.attendance.map((record) =>
+        attendance: snapshot.ledger.attendance.map((record) =>
           record.sessionId === held.sessionId && record.studentId === held.studentId
             ? { ...record, pointState: state }
             : record,
         ),
-        behavior: data.ledger.behavior,
+        behavior: snapshot.ledger.behavior,
       };
       await this.sheet.resolveHeldPoint(
         held.sessionId,
         held.studentId,
         state,
-        summarize({ ...data, ledger }),
+        summarize({ ...snapshot, ledger }),
       );
       await this.reload(`${held.studentName}: point ${state}.`);
     } catch (error) {
@@ -308,8 +308,8 @@ export class AppModel {
   /** Write a Note about a Student with no roll call in progress. The Summary
       tab is rewritten whole, so this is the same write a save makes. */
   async saveNote(student: Student, text: string): Promise<void> {
-    const data = this.current.data;
-    if (!data) return;
+    const snapshot = this.current.snapshot;
+    if (!snapshot) return;
     // Nothing worth writing means nothing to save: closing the field is the
     // whole action. The Notes Log decides what counts as nothing.
     const today = this.today();
@@ -320,7 +320,7 @@ export class AppModel {
     this.set({ noteFor: null, busy: true, message: { text: 'Saving…', isError: false } });
     try {
       await this.sheet.saveStudentSummaries(
-        summarize(data, { on: today, byStudent: new Map([[student.id, text]]) }),
+        summarize(snapshot, { on: today, byStudent: new Map([[student.id, text]]) }),
       );
       await this.reload('Note saved.');
     } catch (error) {
@@ -337,18 +337,18 @@ export class AppModel {
       from the Ledger the save is about to create, not from what the Sheet says
       now, so one write leaves the report correct. */
   private summariesAfterSave(rollCall: RollCall): StudentSummary[] {
-    const data = this.current.data;
-    if (!data) return [];
+    const snapshot = this.current.snapshot;
+    if (!snapshot) return [];
     const ledger: PointsLedger = {
-      attendance: [...data.ledger.attendance, ...recordsToSave(rollCall)],
-      behavior: data.ledger.behavior,
+      attendance: [...snapshot.ledger.attendance, ...recordsToSave(rollCall)],
+      behavior: snapshot.ledger.behavior,
     };
-    // The Session being saved is not in `data.sessions` yet, but it has just
+    // The Session being saved is not in `snapshot.sessions` yet, but it has just
     // happened: leaving it out would rate every Student against one Session
     // fewer than they were actually at.
-    const sessions = [...data.sessions, rollCall.session];
+    const sessions = [...snapshot.sessions, rollCall.session];
     return summarize(
-      { ...data, ledger, sessions },
+      { ...snapshot, ledger, sessions },
       { on: this.today(), byStudent: rollCall.notes },
     );
   }
@@ -363,9 +363,9 @@ export class AppModel {
       nothing has been written, so there is only the read to report. */
   private async reload(done?: string): Promise<void> {
     try {
-      const data = await this.sheet.read();
+      const snapshot = await this.sheet.read();
       this.set({
-        data,
+        snapshot,
         message: done === undefined ? null : { text: done, isError: false },
         busy: false,
       });

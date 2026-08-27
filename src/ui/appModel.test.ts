@@ -53,7 +53,7 @@ describe('starting up', () => {
   it('reads the Sheet and clears the connecting message', async () => {
     const model = await started();
 
-    expect(model.state.data?.students).toEqual(STUDENTS);
+    expect(model.state.snapshot?.students).toEqual(STUDENTS);
     expect(model.state.message).toBeNull();
     expect(model.state.busy).toBe(false);
   });
@@ -69,7 +69,7 @@ describe('starting up', () => {
 
     expect(model.state.message).toEqual({ text: 'no such tab: Students', isError: true });
     expect(model.state.busy).toBe(false);
-    expect(model.state.data).toBeNull();
+    expect(model.state.snapshot).toBeNull();
   });
 
   it('reports every change to its listener', async () => {
@@ -224,7 +224,7 @@ describe('settling a held point', () => {
       ],
     });
 
-  const onlyHeld = (model: AppModel) => heldPoints(model.state.data!)[0]!;
+  const onlyHeld = (model: AppModel) => heldPoints(model.state.snapshot!)[0]!;
 
   it('awards the point when the documentation arrived', async () => {
     const sheet = withHeldPoint();
@@ -236,7 +236,7 @@ describe('settling a held point', () => {
     expect(settled.find((record) => record.studentId === 's1')?.pointState).toBe('awarded');
     expect(model.state.message).toEqual({ text: 'Amy: point awarded.', isError: false });
     // Settled means gone from the list, so the backlog only ever shrinks.
-    expect(heldPoints(model.state.data!)).toEqual([]);
+    expect(heldPoints(model.state.snapshot!)).toEqual([]);
   });
 
   it('denies the point when it never arrived', async () => {
@@ -253,7 +253,7 @@ describe('settling a held point', () => {
   it('moves the Score with the point, in the same write', async () => {
     const sheet = withHeldPoint();
     const model = await started(sheet);
-    const before = summarize(model.state.data!).find((row) => row.studentId === 's1')?.score;
+    const before = summarize(model.state.snapshot!).find((row) => row.studentId === 's1')?.score;
 
     await model.resolveHeldPoint(onlyHeld(model), true);
 
@@ -282,7 +282,7 @@ describe('settling a held point', () => {
     expect(model.state.message).toEqual({ text: 'network lost', isError: true });
     expect(model.state.busy).toBe(false);
     // Still waiting, so the same two buttons are there to tap again.
-    expect(heldPoints(model.state.data!)).toHaveLength(1);
+    expect(heldPoints(model.state.snapshot!)).toHaveLength(1);
   });
 });
 
@@ -313,7 +313,7 @@ describe('a write that lands but cannot be read back', () => {
     // The write landed, so the roll call is let go and the Snapshot on screen
     // is the one from start-up, older than the Sheet.
     expect(model.state.rollCall).toBeNull();
-    expect(model.state.data?.sessions).toEqual([]);
+    expect(model.state.snapshot?.sessions).toEqual([]);
     expect((await sheet.rowsForTest('Sessions')).length).toBe(2);
     expect(model.state.busy).toBe(false);
   });
