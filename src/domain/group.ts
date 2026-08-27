@@ -26,15 +26,3 @@ export function membersOf(group: Group, students: readonly Student[]): Student[]
     .map((id) => byId.get(id))
     .filter((student): student is Student => student !== undefined);
 }
-
-/** A Group with the Student added. Adding an existing member changes nothing. */
-export function addMember(group: Group, studentId: string): Group {
-  if (isMember(group, studentId)) return group;
-  return { ...group, studentIds: [...group.studentIds, studentId] };
-}
-
-/** A Group with the Student removed. Removing a non-member changes nothing. */
-export function removeMember(group: Group, studentId: string): Group {
-  if (!isMember(group, studentId)) return group;
-  return { ...group, studentIds: group.studentIds.filter((id) => id !== studentId) };
-}
