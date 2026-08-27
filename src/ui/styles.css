@@ -223,6 +223,13 @@ li {
   margin: 0.5rem 0 0;
 }
 
+/** Holds a table wider than the screen. The table scrolls in here; the page
+    itself never scrolls sideways. */
+.scroll-x {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
 table.summary {
   width: 100%;
   border-collapse: collapse;
@@ -230,7 +237,6 @@ table.summary {
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   overflow: hidden;
-  margin-bottom: 1rem;
 }
 
 table.summary th,
