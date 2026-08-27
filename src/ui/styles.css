@@ -257,6 +257,12 @@ table.summary tr:first-child th {
   font-weight: 600;
 }
 
+.held-when {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0.25rem 0 0.4rem;
+}
+
 .note-log {
   margin: 0;
   gap: 0.25rem;

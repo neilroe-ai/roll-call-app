@@ -12,6 +12,8 @@ import { markOf, noteOf, type SavedRollCall } from '../domain/rollCall';
 import type { Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
 import type { Snapshot } from '../domain/snapshot';
+import { heldPoints } from '../domain/heldPoints';
+import { summarize } from '../domain/studentSummary';
 
 const STUDENTS = [
   { id: 's1', name: 'Amy' },
@@ -198,6 +200,89 @@ describe('writing outside a roll call', () => {
     expect((await sheet.read()).ledger.behavior).toHaveLength(1);
     expect(model.state.pendingBehavior).toBeNull();
     expect(model.state.message).toEqual({ text: '+1 for Amy.', isError: false });
+  });
+});
+
+describe('settling a held point', () => {
+  const SESSION = { id: 'sess1', groupId: 'G1', takenAt: '2026-08-24T09:00:00+08:00' };
+  const HELD = {
+    sessionId: 'sess1',
+    studentId: 's1',
+    status: 'sick',
+    pointState: 'held',
+    note: 'flu',
+  } as const;
+
+  const withHeldPoint = () =>
+    new FakeSheet({
+      students: STUDENTS,
+      groups: [GROUP],
+      sessions: [SESSION],
+      attendance: [
+        HELD,
+        { sessionId: 'sess1', studentId: 's2', status: 'present', pointState: 'awarded' },
+      ],
+    });
+
+  const onlyHeld = (model: AppModel) => heldPoints(model.state.data!)[0]!;
+
+  it('awards the point when the documentation arrived', async () => {
+    const sheet = withHeldPoint();
+    const model = await started(sheet);
+
+    await model.resolveHeldPoint(onlyHeld(model), true);
+
+    const settled = (await sheet.read()).ledger.attendance;
+    expect(settled.find((record) => record.studentId === 's1')?.pointState).toBe('awarded');
+    expect(model.state.message).toEqual({ text: 'Amy: point awarded.', isError: false });
+    // Settled means gone from the list, so the backlog only ever shrinks.
+    expect(heldPoints(model.state.data!)).toEqual([]);
+  });
+
+  it('denies the point when it never arrived', async () => {
+    const sheet = withHeldPoint();
+    const model = await started(sheet);
+
+    await model.resolveHeldPoint(onlyHeld(model), false);
+
+    const settled = (await sheet.read()).ledger.attendance;
+    expect(settled.find((record) => record.studentId === 's1')?.pointState).toBe('denied');
+    expect(model.state.message).toEqual({ text: 'Amy: point denied.', isError: false });
+  });
+
+  it('moves the Score with the point, in the same write', async () => {
+    const sheet = withHeldPoint();
+    const model = await started(sheet);
+    const before = summarize(model.state.data!).find((row) => row.studentId === 's1')?.score;
+
+    await model.resolveHeldPoint(onlyHeld(model), true);
+
+    expect(before).toBe(0);
+    // The Summary tab the teacher opens, not just the screen, has the point.
+    const rows = await sheet.rowsForTest('Summary');
+    expect(rows[1]?.[3]).toBe('1');
+  });
+
+  it('leaves the point held and says why when the write fails', async () => {
+    class ResolveFails extends FakeSheet {
+      override setPointState(): Promise<void> {
+        return Promise.reject(new Error('network lost'));
+      }
+    }
+    const sheet = new ResolveFails({
+      students: STUDENTS,
+      groups: [GROUP],
+      sessions: [SESSION],
+      attendance: [HELD],
+    });
+    const model = await started(sheet);
+
+    await model.resolveHeldPoint(onlyHeld(model), true);
+
+    expect(model.state.message).toEqual({ text: 'network lost', isError: true });
+    expect(model.state.busy).toBe(false);
+    // Still waiting, so the same two buttons are there to tap again.
+    expect(heldPoints(model.state.data!)).toHaveLength(1);
   });
 });
 

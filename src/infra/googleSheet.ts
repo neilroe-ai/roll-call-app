@@ -42,6 +42,7 @@ import type { SheetGateway } from './sheetGateway';
 import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
 import { writeBehavior } from './writeBehavior';
+import { writeHeldPoint } from './writeHeldPoint';
 import type { RollCall } from '../domain/rollCall';
 
 export const SHEET_TITLE = 'Roll Call';
@@ -243,6 +244,15 @@ export class GoogleSheet implements SheetGateway {
       const range = `${SUMMARY_TAB.title}!A2:${SUMMARY_LAST_COLUMN}${String(rows.length + 1)}`;
       await this.api.updateValues(id, range, rows);
     });
+  }
+
+  resolveHeldPoint(
+    sessionId: string,
+    studentId: string,
+    state: PointState,
+    summaries: readonly StudentSummary[],
+  ): Promise<void> {
+    return writeHeldPoint(this, sessionId, studentId, state, summaries);
   }
 
   /** Resolve a held point by overwriting one cell. The row is found by reading
