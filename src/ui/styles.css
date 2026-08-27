@@ -230,13 +230,15 @@ li {
   margin-bottom: 1rem;
 }
 
+/* No `overflow` here: it would make the table its own scroll container, and
+   the sticky name column would then stick to the table rather than to the box
+   the table scrolls in. The corners are rounded on the sticky cells instead. */
 table.summary {
   width: 100%;
   border-collapse: collapse;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 0.75rem;
-  overflow: hidden;
 }
 
 table.summary th,
@@ -252,9 +254,24 @@ table.summary tr:last-child td {
   border-bottom: 0;
 }
 
+/* The name stays put while the counts scroll under it: a row scrolled to its
+   Other column with no name on it belongs to nobody. Each cell carries its own
+   background, because the table's shows through a sticky cell. */
 table.summary th.name,
 table.summary tr:first-child th:first-child {
   text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+}
+
+table.summary tr:first-child th:first-child {
+  border-top-left-radius: 0.75rem;
+}
+
+table.summary tr:last-child th.name {
+  border-bottom-left-radius: 0.75rem;
 }
 
 table.summary tr:first-child th {
