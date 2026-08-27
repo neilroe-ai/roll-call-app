@@ -18,7 +18,9 @@ import {
   type AttendanceStatus,
   type BehaviorKind,
 } from '../domain/points';
-import type { HeldPoint } from '../domain/heldPoints';
+import { heldPoints, type HeldPoint } from '../domain/heldPoints';
+import { scoreboard, type ScoreboardEntry } from '../domain/scoreboard';
+import { summarize, type StudentSummary } from '../domain/studentSummary';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
 import type { Snapshot } from '../domain/snapshot';
@@ -56,6 +58,13 @@ export interface Message {
 export interface AppState {
   view: View;
   snapshot: Snapshot | null;
+  /** The lists the screens show, worked out from the Snapshot once, when it
+      lands. ADR 0005 has the ui render state rather than derive it: the nav
+      carries the Held Point count on every screen, so deriving at draw time
+      would walk the whole Attendance Ledger on every tap. */
+  held: readonly HeldPoint[];
+  summaries: readonly StudentSummary[];
+  scores: readonly ScoreboardEntry[];
   rollCall: RollCall | null;
   /** The Student whose Note field is open, if any. Only one at a time. */
   noteFor: string | null;
@@ -85,9 +94,23 @@ function reasonFor(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.';
 }
 
+/** What the screens show for a given Snapshot, or nothing at all before the
+    first read. */
+function viewsOf(snapshot: Snapshot | null): Pick<AppState, 'held' | 'summaries' | 'scores'> {
+  if (!snapshot) return { held: [], summaries: [], scores: [] };
+  return {
+    held: heldPoints(snapshot),
+    summaries: summarize(snapshot),
+    scores: scoreboard(snapshot),
+  };
+}
+
 const INITIAL: AppState = {
   view: 'groups',
   snapshot: null,
+  held: [],
+  summaries: [],
+  scores: [],
   rollCall: null,
   noteFor: null,
   pendingBehavior: null,
@@ -341,7 +364,10 @@ export class AppModel {
   }
 
   private set(changes: Partial<AppState>): void {
-    this.current = { ...this.current, ...changes };
+    const next = { ...this.current, ...changes };
+    // Derived here rather than by each action, so no way of reading the Sheet
+    // can leave a screen showing figures from the Snapshot before it.
+    this.current = 'snapshot' in changes ? { ...next, ...viewsOf(next.snapshot) } : next;
     // Written down here rather than in each action, so no way of changing the
     // roll call can forget to do it, and what the device holds cannot drift
     // from what is on screen.
