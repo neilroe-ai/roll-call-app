@@ -13,8 +13,6 @@ import { markOf, noteOf, type SavedRollCall } from '../domain/rollCall';
 import type { Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
 import type { Snapshot } from '../domain/snapshot';
-import { heldPoints } from '../domain/heldPoints';
-import { summarize } from '../domain/studentSummary';
 
 const STUDENTS = [
   { id: 's1', name: 'Amy' },
@@ -225,7 +223,7 @@ describe('settling a held point', () => {
       ],
     });
 
-  const onlyHeld = (model: AppModel) => heldPoints(model.state.snapshot!)[0]!;
+  const onlyHeld = (model: AppModel) => model.state.held[0]!;
 
   it('awards the point when the documentation arrived', async () => {
     const sheet = withHeldPoint();
@@ -237,7 +235,7 @@ describe('settling a held point', () => {
     expect(settled.find((record) => record.studentId === 's1')?.pointState).toBe('awarded');
     expect(model.state.message).toEqual({ text: 'Amy: point awarded.', isError: false });
     // Settled means gone from the list, so the backlog only ever shrinks.
-    expect(heldPoints(model.state.snapshot!)).toEqual([]);
+    expect(model.state.held).toEqual([]);
   });
 
   it('denies the point when it never arrived', async () => {
@@ -254,7 +252,7 @@ describe('settling a held point', () => {
   it('moves the Score with the point, in the same write', async () => {
     const sheet = withHeldPoint();
     const model = await started(sheet);
-    const before = summarize(model.state.snapshot!).find((row) => row.studentId === 's1')?.score;
+    const before = model.state.summaries.find((row) => row.studentId === 's1')?.score;
 
     await model.resolveHeldPoint(onlyHeld(model), true);
 
@@ -283,7 +281,7 @@ describe('settling a held point', () => {
     expect(model.state.message).toEqual({ text: 'network lost', isError: true });
     expect(model.state.busy).toBe(false);
     // Still waiting, so the same two buttons are there to tap again.
-    expect(heldPoints(model.state.snapshot!)).toHaveLength(1);
+    expect(model.state.held).toHaveLength(1);
   });
 });
 
@@ -507,5 +505,72 @@ describe('a reload part way through a roll call', () => {
 
     expect(offline.state.message).toEqual({ text: 'no such tab: Students', isError: true });
     expect(device.kept()).not.toBeUndefined();
+  });
+});
+
+describe('the lists the screens show', () => {
+  const SESSION: Session = { id: 'sess1', groupId: 'G1', takenAt: '2026-08-24T09:00:00+08:00' };
+
+  const seeded = () =>
+    new FakeSheet({
+      students: STUDENTS,
+      groups: [GROUP],
+      sessions: [SESSION],
+      attendance: [
+        { sessionId: 'sess1', studentId: 's1', status: 'sick', pointState: 'held' },
+        { sessionId: 'sess1', studentId: 's2', status: 'present', pointState: 'awarded' },
+      ],
+    });
+
+  it('is empty before the first read, so a screen has something to draw', () => {
+    const model = new AppModel(seeded(), clock);
+
+    expect(model.state.held).toEqual([]);
+    expect(model.state.summaries).toEqual([]);
+    expect(model.state.scores).toEqual([]);
+  });
+
+  it('carries every screen once the Sheet has been read', async () => {
+    const model = await started(seeded());
+
+    expect(model.state.held.map((point) => point.studentName)).toEqual(['Amy']);
+    expect(model.state.summaries.map((row) => row.name)).toEqual(['Amy', 'Ben']);
+    // Highest Score first: Ben's present point counts, Amy's is still held.
+    expect(model.state.scores.map((entry) => entry.name)).toEqual(['Ben', 'Amy']);
+  });
+
+  it('is worked out again whenever the Snapshot changes', async () => {
+    const model = await started(seeded());
+
+    await model.resolveHeldPoint(model.state.held[0]!, true);
+
+    expect(model.state.held).toEqual([]);
+    expect(model.state.summaries.find((row) => row.name === 'Amy')?.score).toBe(1);
+    expect(model.state.scores.map((entry) => entry.name)).toEqual(['Amy', 'Ben']);
+  });
+
+  it('is left standing when the Sheet cannot be read back', async () => {
+    class ResolvesThenGoesQuiet extends FakeSheet {
+      private reads = 0;
+      override read(): Promise<Snapshot> {
+        this.reads += 1;
+        return this.reads > 1 ? Promise.reject(new Error('token expired')) : super.read();
+      }
+    }
+    const model = await started(
+      new ResolvesThenGoesQuiet({
+        students: STUDENTS,
+        groups: [GROUP],
+        sessions: [SESSION],
+        attendance: [{ sessionId: 'sess1', studentId: 's1', status: 'sick', pointState: 'held' }],
+      }),
+    );
+
+    await model.resolveHeldPoint(model.state.held[0]!, true);
+
+    // The screen is older than the Sheet and says so, but it still shows the
+    // point rather than emptying itself on a failed read.
+    expect(model.state.message?.isError).toBe(true);
+    expect(model.state.held).toHaveLength(1);
   });
 });

@@ -10,9 +10,9 @@ import { BEHAVIOR_KINDS, STATUSES, type AttendanceStatus } from '../domain/point
 import { signOf } from '../domain/behavior';
 import type { Student } from '../domain/group';
 import { markOf, noteOf, remaining } from '../domain/rollCall';
-import { heldPoints, type HeldPoint } from '../domain/heldPoints';
-import { scoreboard } from '../domain/scoreboard';
-import { shareText, summarize } from '../domain/studentSummary';
+import type { HeldPoint } from '../domain/heldPoints';
+import type { ScoreboardEntry } from '../domain/scoreboard';
+import { shareText, type StudentSummary } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
 import { noRollCallStore, type RollCallStore } from '../infra/rollCallStore';
 import {
@@ -109,9 +109,10 @@ export class App {
 
     if (!snapshot) return;
     if (view === 'rollCall' && state.rollCall) this.root.append(...this.renderRollCall(state));
-    else if (view === 'held') this.root.append(...this.renderHeld(snapshot));
-    else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(snapshot));
-    else if (view === 'summary') this.root.append(...this.renderSummary(snapshot, state.asShare));
+    else if (view === 'held') this.root.append(...this.renderHeld(state.held));
+    else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(state.scores));
+    else if (view === 'summary')
+      this.root.append(...this.renderSummary(state.summaries, state.asShare));
     else if (view === 'notes') this.root.append(...this.renderNotes(snapshot, state.noteFor));
     else if (view === 'behavior')
       this.root.append(...this.renderBehavior(snapshot, state.pendingBehavior));
@@ -131,7 +132,7 @@ export class App {
     // Held Points expire never and announce themselves nowhere else, so the
     // count rides on the tab: a backlog nobody can see is a backlog nobody
     // settles.
-    const waiting = state.snapshot ? heldPoints(state.snapshot).length : 0;
+    const waiting = state.held.length;
     const tabs: [View, string][] = [
       ['groups', 'Take roll'],
       ['behavior', 'Behavior'],
@@ -318,9 +319,8 @@ export class App {
 
   /** Every Student's Score and how their Attendance Statuses fell out — the
       Summary tab, readable without opening the Sheet. */
-  private renderSummary(snapshot: Snapshot, asShare: boolean): HTMLElement[] {
-    if (snapshot.students.length === 0) return [noStudents()];
-    const summaries = summarize(snapshot);
+  private renderSummary(summaries: readonly StudentSummary[], asShare: boolean): HTMLElement[] {
+    if (summaries.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Summary');
 
     const toggle = element('button', undefined, asShare ? 'Show days' : 'Show %');
@@ -461,8 +461,7 @@ export class App {
   /** Every Held Point still waiting, and the two answers that settle it. The
       teacher decides one thing here — did the documentation arrive — so the
       row carries what she needs to answer it and nothing else. */
-  private renderHeld(snapshot: Snapshot): HTMLElement[] {
-    const waiting = heldPoints(snapshot);
+  private renderHeld(waiting: readonly HeldPoint[]): HTMLElement[] {
     const heading = element('h1', undefined, 'Held points');
     if (waiting.length === 0) {
       return [heading, element('p', 'muted', 'Nothing waiting. Every point is settled.')];
@@ -512,8 +511,7 @@ export class App {
     return item;
   }
 
-  private renderScoreboard(snapshot: Snapshot): HTMLElement[] {
-    const entries = scoreboard(snapshot);
+  private renderScoreboard(entries: readonly ScoreboardEntry[]): HTMLElement[] {
     if (entries.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Scoreboard');
     const list = element('ul');
