@@ -25,6 +25,13 @@ of truth for the rule. If it fails, fix the import, never edit the contract.
 - Reading or writing the Sheet or any external service → `infra`.
 - Anything the user sees or touches → `ui`.
 
+## Testing the screens
+
+A `ui` test drives the real `App` over a `FakeSheet` through
+`src/ui/testScreen.ts`: `openApp(seed)` starts one and hands back a `Screen`
+that finds buttons, reads what is drawn, and waits for a write to land. Add a
+reading there rather than querying the DOM in a test file.
+
 ## Decisions
 
 Architecture decisions with lasting consequences are recorded as ADRs under
