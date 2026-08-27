@@ -21,3 +21,6 @@ npm-debug.log*
 # stray python bytecode (legacy)
 __pycache__/
 *.pyc
+
+# Playwright MCP scratch output (browser snapshots, console logs)
+.playwright-mcp/
