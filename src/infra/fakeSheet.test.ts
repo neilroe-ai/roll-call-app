@@ -139,17 +139,7 @@ describe('saving a behavior point', () => {
       note: 'helped tidy up',
     } as const;
 
-    await sheet.saveBehavior(point, [
-      {
-        studentId: 's1',
-        name: 'Ana',
-        groupNames: [],
-        score: 1,
-        sessions: 0,
-        counts: { present: 0, absent: 0, sick: 0, other: 0 },
-        notes: ['2026-08-26: +1 helped tidy up'],
-      },
-    ]);
+    await sheet.saveBehavior(point, await sheet.read());
 
     const snapshot = await sheet.read();
     expect(snapshot.ledger.behavior).toEqual([point]);

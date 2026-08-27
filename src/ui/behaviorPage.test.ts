@@ -113,10 +113,14 @@ test('the point counts towards the score at once', async () => {
   await award('Amy', '+1');
   await award('Ben', '-1');
 
-  const rows = await sheet.rowsForTest('Summary');
-  // Student ID, Name, Groups, Score
-  expect(rows[1]?.slice(0, 4)).toEqual(['s1', 'Amy', '', '2']);
-  expect(rows[2]?.slice(0, 4)).toEqual(['s2', 'Ben', '', '-1']);
+  // What the class sees, rather than the cells behind it: the Summary tab's
+  // own figures are the Sheet's to work out, and are tested there.
+  button('Scoreboard').click();
+  const scores = [...root.querySelectorAll('li')].map((item) => item.textContent ?? '');
+  expect(scores[0]).toContain('Amy');
+  expect(scores[0]).toContain('2');
+  expect(scores[1]).toContain('Ben');
+  expect(scores[1]).toContain('-1');
 });
 
 test('an explained point earns a line in the notes log, a bare one does not', async () => {

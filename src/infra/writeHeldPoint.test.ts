@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { writeHeldPoint } from './writeHeldPoint';
 import { FakeSheet } from './fakeSheet';
 import type { AttendanceRecord, Session } from '../domain/session';
+import { SUMMARY_TAB } from './rows';
+
+const SCORE = SUMMARY_TAB.header.indexOf('Score');
 
 const SESSION: Session = { id: 'sess1', groupId: 'G1', takenAt: '2026-08-24T09:00:00+08:00' };
 const HELD: AttendanceRecord = {
@@ -30,16 +33,27 @@ class SummaryWriteFails extends FakeSheet {
 describe('writeHeldPoint', () => {
   it('settles the point', async () => {
     const sheet = new FakeSheet(seed());
-    await writeHeldPoint(sheet, 'sess1', 's1', 'awarded', []);
+    await writeHeldPoint(sheet, 'sess1', 's1', 'awarded', await sheet.read());
 
     expect(await stateOf(sheet)).toBe('awarded');
   });
 
+  it('works the Summary out from the state it is settling', async () => {
+    const sheet = new FakeSheet(seed());
+    await writeHeldPoint(sheet, 'sess1', 's1', 'awarded', await sheet.read());
+
+    // The Score moves the moment the state lands: held scored nothing,
+    // awarded scores 1. Settling a point writes no Note.
+    const rows = await sheet.rowsForTest('Summary');
+    expect(rows[1]?.[SCORE]).toBe('1');
+    expect((await sheet.read()).notes.get('s1') ?? []).toEqual([]);
+  });
+
   it('writes the point state before the summary', async () => {
     const sheet = new SummaryWriteFails(seed());
-    await expect(writeHeldPoint(sheet, 'sess1', 's1', 'awarded', [])).rejects.toThrow(
-      'network lost',
-    );
+    await expect(
+      writeHeldPoint(sheet, 'sess1', 's1', 'awarded', await sheet.read()),
+    ).rejects.toThrow('network lost');
 
     // The decision survives; the Summary is only stale, and every figure on it
     // is worked out from the Points Ledger anyway.
@@ -48,8 +62,8 @@ describe('writeHeldPoint', () => {
 
   it('leaves the same Sheet however often it is written', async () => {
     const sheet = new FakeSheet(seed());
-    await writeHeldPoint(sheet, 'sess1', 's1', 'denied', []);
-    await writeHeldPoint(sheet, 'sess1', 's1', 'denied', []);
+    await writeHeldPoint(sheet, 'sess1', 's1', 'denied', await sheet.read());
+    await writeHeldPoint(sheet, 'sess1', 's1', 'denied', await sheet.read());
 
     expect((await sheet.read()).ledger.attendance).toHaveLength(1);
     expect(await stateOf(sheet)).toBe('denied');
@@ -58,9 +72,9 @@ describe('writeHeldPoint', () => {
   it('says so when there is no such record', async () => {
     const sheet = new FakeSheet(seed());
 
-    await expect(writeHeldPoint(sheet, 'sess1', 'nobody', 'awarded', [])).rejects.toThrow(
-      'no attendance record for nobody in sess1',
-    );
+    await expect(
+      writeHeldPoint(sheet, 'sess1', 'nobody', 'awarded', await sheet.read()),
+    ).rejects.toThrow('no attendance record for nobody in sess1');
     // Nothing was written, so the Summary was never touched either.
     expect(await stateOf(sheet)).toBe('held');
   });

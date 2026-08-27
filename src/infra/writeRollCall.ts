@@ -8,8 +8,10 @@
  * teacher can retry. Writing the Session first would risk the opposite, a
  * Session that claims a roll was taken while its points are lost.
  *
- * The Summary tab goes last. Every figure on it is worked out from the Points
- * Ledger, so a failure there costs a stale report and nothing else.
+ * The Summary tab goes last, and is worked out here from the Snapshot the roll
+ * call was taken against rather than handed in by the caller: the figures come
+ * from the Points Ledger this write is creating, so one write leaves the report
+ * correct. A failure at that last step costs a stale report and nothing else.
  *
  * A retry writes only what is still missing, and what is missing is read back
  * from the Sheet rather than remembered. A teacher who loses signal mid-save,
@@ -17,6 +19,8 @@
  * held in memory survives that.
  */
 import { recordsToSave, type RollCall } from '../domain/rollCall';
+import { afterRollCall } from '../domain/summariesAfter';
+import type { Snapshot } from '../domain/snapshot';
 import type { StudentSummary } from '../domain/studentSummary';
 import type { AttendanceRecord, Session } from '../domain/session';
 
@@ -34,7 +38,7 @@ export interface RollCallWrites {
 export async function writeRollCall(
   sheet: RollCallWrites,
   rollCall: RollCall,
-  summaries: readonly StudentSummary[],
+  snapshot: Snapshot,
 ): Promise<void> {
   const sessionId = rollCall.session.id;
 
@@ -48,5 +52,5 @@ export async function writeRollCall(
     await sheet.appendSession(rollCall.session);
   }
 
-  await sheet.saveStudentSummaries(summaries);
+  await sheet.saveStudentSummaries(afterRollCall(snapshot, rollCall));
 }

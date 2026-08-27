@@ -6,16 +6,20 @@
  * teacher renamed — so callers must handle rejection. Per ADR 0002 a failed
  * write must never block taking roll.
  *
- * One read and three writes. Each write leaves the Sheet whole: it commits
- * everything the action touches, in the order that fails safely, so a caller
- * never has to sequence two calls to keep the Sheet consistent. Every write is
- * safe to repeat.
+ * One read and four writes, one per action the teacher can take. Each write
+ * leaves the Sheet whole: it commits everything the action touches, in the order
+ * that fails safely, so a caller never has to sequence two calls to keep the
+ * Sheet consistent. Every write is safe to repeat.
+ *
+ * A write takes the action and the Snapshot it was decided against — never the
+ * Summary rows it should produce. Working out what an action does to a Score is
+ * the Sheet's own business (ADR 0011), so a caller passes only what it already
+ * holds.
  */
-import type { BehaviorPoint } from '../domain/behavior';
+import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { RollCall } from '../domain/rollCall';
 import type { Snapshot } from '../domain/snapshot';
-import type { StudentSummary } from '../domain/studentSummary';
 
 export interface SheetGateway {
   /** Everything the Sheet holds, in one go. Gives every Student a row in the
@@ -26,16 +30,12 @@ export interface SheetGateway {
       Summary tab, in the order that fails safely. Writing the same roll call
       twice changes nothing, so a retry after a failure — or after a reload —
       cannot double-count a Student. */
-  saveRollCall(rollCall: RollCall, summaries: readonly StudentSummary[]): Promise<void>;
+  saveRollCall(rollCall: RollCall, snapshot: Snapshot): Promise<void>;
 
   /** Write a Behavior Point and the Summary it changes. The point counts the
       moment it lands, so the Summary follows it immediately: a Score lagging
       behind the Behavior tab would be read as the app losing a point. */
-  saveBehavior(point: BehaviorPoint, summaries: readonly StudentSummary[]): Promise<void>;
-
-  /** Rewrite the Summary tab, which the app owns whole. Afterwards it shows
-      exactly these summaries and nothing else — an empty list clears it. */
-  saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
+  saveBehavior(point: BehaviorPoint, snapshot: Snapshot): Promise<void>;
 
   /** Settle a Held Point once the teacher knows whether the documentation
       arrived: the Attendance Record's Point State and the Summary it changes.
@@ -45,6 +45,10 @@ export interface SheetGateway {
     sessionId: string,
     studentId: string,
     state: PointState,
-    summaries: readonly StudentSummary[],
+    snapshot: Snapshot,
   ): Promise<void>;
+
+  /** Write a Note about a Student outside any roll call. It lands in that
+      Student's Notes Log, dated `on`. No Score changes. */
+  saveNote(studentId: string, text: string, on: CalendarDate, snapshot: Snapshot): Promise<void>;
 }
