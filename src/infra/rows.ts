@@ -79,12 +79,30 @@ export const SUMMARY_TAB: TabSchema = {
   ],
 };
 
+/** A zero-based column number as the letters the Sheets API wants in an A1
+    range: 0 is A, 25 is Z, 26 is AA.
+
+    Counting up from the code for 'A' is right only as far as Z — column 26
+    lands on '[', and the API would reject the range rather than misread it.
+    A1 letters are base-26 with no zero digit, so each place is taken off the
+    number before the next one is worked out. */
+export function columnLetter(index: number): string {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Column index must be a whole number from 0, got ${String(index)}.`);
+  }
+  let remaining = index;
+  let letters = '';
+  do {
+    letters = String.fromCharCode('A'.charCodeAt(0) + (remaining % 26)) + letters;
+    remaining = Math.floor(remaining / 26) - 1;
+  } while (remaining >= 0);
+  return letters;
+}
+
 /** Which Summary column holds the Notes Log, and how wide the tab is in A1.
     Both are read off the header, so adding a column moves them together. */
 const SUMMARY_NOTES_INDEX = SUMMARY_TAB.header.indexOf('Notes');
-export const SUMMARY_LAST_COLUMN = String.fromCharCode(
-  'A'.charCodeAt(0) + SUMMARY_TAB.header.length - 1,
-);
+export const SUMMARY_LAST_COLUMN = columnLetter(SUMMARY_TAB.header.length - 1);
 export const SESSIONS_TAB: TabSchema = {
   title: 'Sessions',
   header: ['Session ID', 'Group ID', 'Date & Time'],
@@ -427,7 +445,7 @@ export function findAttendanceRow(
 /** Where the Point sits in an Attendance row, as an index and as the A1 column
     the Sheets API wants. One fact, two spellings, so no caller counts cells. */
 export const POINT_INDEX = 3;
-export const POINT_COLUMN = String.fromCharCode('A'.charCodeAt(0) + POINT_INDEX);
+export const POINT_COLUMN = columnLetter(POINT_INDEX);
 
 /** Decode a whole tab's values, skipping the header row. Row numbers in errors
     are 1-based Sheet rows, so they match what the teacher sees. */
