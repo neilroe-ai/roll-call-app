@@ -1,8 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { GoogleSheet, SHEET_TITLE, type IdStore } from './googleSheet';
 import { SheetsApi } from './sheetsApi';
-import { FetchStub, StubTokens } from './testFetch';
-import { ALL_TABS, GROUPS_TAB, SUMMARY_TAB } from './rows';
+import { FetchStub, SheetFetch, StubTokens } from './testFetch';
+import {
+  ALL_TABS,
+  ATTENDANCE_TAB,
+  BEHAVIOR_TAB,
+  GROUPS_TAB,
+  SESSIONS_TAB,
+  STUDENTS_TAB,
+  SUMMARY_TAB,
+  type SheetRow,
+} from './rows';
+import { beginRollCall, mark } from '../domain/rollCall';
+import { awardBehavior } from '../domain/behavior';
 import { recordAttendance, type Session } from '../domain/session';
 
 const session: Session = { id: 'sess1', groupId: 'g1', takenAt: '2026-08-25T09:05:00+08:00' };
@@ -242,5 +253,184 @@ describe('the groups grid columns', () => {
         ['s2', 'Ben'],
       ],
     });
+  });
+});
+
+/**
+ * The four methods of the port, over the transport, as the app calls them.
+ *
+ * The parts above are exercised one call at a time. These are the whole
+ * actions: the order two tabs are written in, the read-back that makes a retry
+ * safe, and the ranges the API is actually handed.
+ */
+describe('the whole of the port', () => {
+  const STUDENTS = [
+    { id: 's1', name: 'Ana' },
+    { id: 's2', name: 'Ben' },
+  ];
+  const SESSION: Session = { id: 'sess1', groupId: 'G1', takenAt: '2026-08-25T09:05:00+08:00' };
+
+  /** A Sheet the teacher has filled in: two Students, one Group, nothing taken
+      yet. Anything already recorded is seeded on top. */
+  const sheetHolding = (extra: Record<string, SheetRow[]> = {}) =>
+    new SheetFetch({
+      [STUDENTS_TAB.title]: [
+        STUDENTS_TAB.header,
+        [...STUDENTS_TAB.encode(STUDENTS[0]!), '3', '0', '0', '0', '0'],
+        STUDENTS_TAB.encode(STUDENTS[1]!),
+      ],
+      [GROUPS_TAB.title]: [
+        [...GROUPS_TAB.header, '3A'],
+        ['s1', 'Ana', 'y'],
+        ['s2', 'Ben', 'y'],
+      ],
+      [SUMMARY_TAB.title]: [SUMMARY_TAB.header],
+      [SESSIONS_TAB.title]: [SESSIONS_TAB.header],
+      [ATTENDANCE_TAB.title]: [ATTENDANCE_TAB.header],
+      [BEHAVIOR_TAB.title]: [BEHAVIOR_TAB.header],
+      ...extra,
+    });
+
+  const open = (fetch: SheetFetch) =>
+    new GoogleSheet(new SheetsApi(new StubTokens(), fetch.fetch), new MemoryIdStore('kept1'));
+
+  it('reads every tab into one snapshot', async () => {
+    const fetch = sheetHolding({
+      [SESSIONS_TAB.title]: [SESSIONS_TAB.header, SESSIONS_TAB.encode(SESSION)],
+      [ATTENDANCE_TAB.title]: [
+        ATTENDANCE_TAB.header,
+        ATTENDANCE_TAB.encode(recordAttendance(SESSION, 's1', 'sick', 'flu')),
+      ],
+    });
+
+    const snapshot = await open(fetch).read();
+
+    expect(snapshot.students).toEqual(STUDENTS);
+    expect(snapshot.groups).toEqual([{ id: 'G1', name: '3A', studentIds: ['s1', 's2'] }]);
+    expect(snapshot.sessions).toEqual([SESSION]);
+    expect(snapshot.ledger.attendance[0]).toMatchObject({ studentId: 's1', pointState: 'held' });
+    expect(snapshot.adjustments.get('s1')?.points).toBe(3);
+    expect(snapshot.notes.size).toBe(0);
+  });
+
+  it('gives a new student a row in the grid before offering the groups', async () => {
+    const fetch = sheetHolding({
+      [GROUPS_TAB.title]: [
+        [...GROUPS_TAB.header, '3A'],
+        ['s1', 'Ana', 'y'],
+      ],
+    });
+
+    await open(fetch).read();
+
+    // Ben was only on the Students tab; without a row here he could never be
+    // ticked into a Group.
+    expect(fetch.rows(GROUPS_TAB.title)[2]).toEqual(['s2', 'Ben']);
+    // The teacher's tick in C is outside the range the app writes.
+    expect(fetch.rows(GROUPS_TAB.title)[1]).toEqual(['s1', 'Ana', 'y']);
+  });
+
+  it('saves a roll call attendance first, session next, summary last', async () => {
+    const fetch = sheetHolding();
+    const sheet = open(fetch);
+    const snapshot = await sheet.read();
+    const rollCall = mark(beginRollCall(SESSION, snapshot.groups[0]!, STUDENTS), 's1', 'present');
+
+    const sofar = fetch.calls.length;
+    await sheet.saveRollCall(rollCall, snapshot);
+
+    // Records before the Session row: a Session claiming a roll was taken
+    // while its points are lost is the failure that costs the teacher work.
+    expect(fetch.written(sofar)).toEqual([
+      ATTENDANCE_TAB.title,
+      SESSIONS_TAB.title,
+      SUMMARY_TAB.title,
+    ]);
+    // Only Ana was marked, so only Ana has a Record.
+    expect(ATTENDANCE_TAB.decode(fetch.rows(ATTENDANCE_TAB.title))).toHaveLength(1);
+    expect(SESSIONS_TAB.decode(fetch.rows(SESSIONS_TAB.title))).toEqual([SESSION]);
+    // Ana was present, on top of the 3 points the teacher carried in.
+    expect(fetch.rows(SUMMARY_TAB.title)[1]?.[SUMMARY_TAB.header.indexOf('Score')]).toBe('4');
+  });
+
+  it('writes nothing twice when a roll call is saved again', async () => {
+    const fetch = sheetHolding();
+    const sheet = open(fetch);
+    const snapshot = await sheet.read();
+    const rollCall = mark(beginRollCall(SESSION, snapshot.groups[0]!, STUDENTS), 's1', 'present');
+    await sheet.saveRollCall(rollCall, snapshot);
+
+    // The teacher lost signal, reloaded, and tapped Save again.
+    await sheet.saveRollCall(rollCall, await sheet.read());
+
+    expect(ATTENDANCE_TAB.decode(fetch.rows(ATTENDANCE_TAB.title))).toHaveLength(1);
+    expect(SESSIONS_TAB.decode(fetch.rows(SESSIONS_TAB.title))).toHaveLength(1);
+  });
+
+  it('saves a behavior point and the score it moves, in that order', async () => {
+    const fetch = sheetHolding();
+    const sheet = open(fetch);
+    const snapshot = await sheet.read();
+    const point = awardBehavior('b1', 's2', '2026-08-25', 'positive', 'helped');
+
+    const sofar = fetch.calls.length;
+    await sheet.saveBehavior(point, snapshot);
+
+    expect(fetch.written(sofar)).toEqual([BEHAVIOR_TAB.title, SUMMARY_TAB.title]);
+    expect(BEHAVIOR_TAB.decode(fetch.rows(BEHAVIOR_TAB.title))).toEqual([point]);
+    expect(SUMMARY_TAB.notes(fetch.rows(SUMMARY_TAB.title)).get('s2')).toEqual([
+      '2026-08-25: +1 helped',
+    ]);
+  });
+
+  it('awards one point when the same behavior point is saved twice', async () => {
+    const fetch = sheetHolding();
+    const sheet = open(fetch);
+    const point = awardBehavior('b1', 's2', '2026-08-25', 'positive');
+    await sheet.saveBehavior(point, await sheet.read());
+
+    await sheet.saveBehavior(point, await sheet.read());
+
+    expect(BEHAVIOR_TAB.decode(fetch.rows(BEHAVIOR_TAB.title))).toHaveLength(1);
+  });
+
+  it('resolves a held point by moving the state and the score together', async () => {
+    const fetch = sheetHolding({
+      [SESSIONS_TAB.title]: [SESSIONS_TAB.header, SESSIONS_TAB.encode(SESSION)],
+      [ATTENDANCE_TAB.title]: [
+        ATTENDANCE_TAB.header,
+        ATTENDANCE_TAB.encode(recordAttendance(SESSION, 's1', 'present')),
+        ATTENDANCE_TAB.encode(recordAttendance(SESSION, 's2', 'sick', 'flu')),
+      ],
+    });
+    const sheet = open(fetch);
+
+    const snapshot = await sheet.read();
+    const sofar = fetch.calls.length;
+    await sheet.resolveHeldPoint('sess1', 's2', 'awarded', snapshot);
+
+    expect(fetch.written(sofar)).toEqual([ATTENDANCE_TAB.title, SUMMARY_TAB.title]);
+    expect(ATTENDANCE_TAB.decode(fetch.rows(ATTENDANCE_TAB.title))[1]).toMatchObject({
+      studentId: 's2',
+      pointState: 'awarded',
+      note: 'flu',
+    });
+    const summary = fetch.rows(SUMMARY_TAB.title)[2];
+    expect(summary?.[0]).toBe('s2');
+    expect(summary?.[SUMMARY_TAB.header.indexOf('Score')]).toBe('1');
+  });
+
+  it('writes a note to the summary and nothing else', async () => {
+    const fetch = sheetHolding();
+    const sheet = open(fetch);
+
+    const snapshot = await sheet.read();
+    const sofar = fetch.calls.length;
+    await sheet.saveNote('s1', 'Mother called', '2026-08-25', snapshot);
+
+    expect(fetch.written(sofar)).toEqual([SUMMARY_TAB.title]);
+    expect(SUMMARY_TAB.notes(fetch.rows(SUMMARY_TAB.title)).get('s1')).toEqual([
+      '2026-08-25: Mother called',
+    ]);
   });
 });
