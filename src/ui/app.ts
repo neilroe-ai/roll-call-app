@@ -304,7 +304,7 @@ export class App {
   }
 
   /** Every Student's Score and how their Attendance Statuses fell out — the
-      Students tab, readable without opening the Sheet. */
+      Summary tab, readable without opening the Sheet. */
   private renderSummary(data: Snapshot, asShare: boolean): HTMLElement[] {
     if (data.students.length === 0) return [noStudents()];
     const summaries = summarize(data);

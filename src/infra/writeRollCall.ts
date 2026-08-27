@@ -8,8 +8,8 @@
  * teacher can retry. Writing the Session first would risk the opposite, a
  * Session that claims a roll was taken while its points are lost.
  *
- * The Students summary goes last. Every figure in it is worked out from the
- * Points Ledger, so a failure there costs a stale report and nothing else.
+ * The Summary tab goes last. Every figure on it is worked out from the Points
+ * Ledger, so a failure there costs a stale report and nothing else.
  *
  * A retry writes only what is still missing, and what is missing is read back
  * from the Sheet rather than remembered. A teacher who loses signal mid-save,
