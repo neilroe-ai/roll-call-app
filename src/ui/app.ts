@@ -18,6 +18,7 @@ import { markOf, noteOf, remaining } from '../domain/rollCall';
 import { scoreboard } from '../domain/scoreboard';
 import { shareText, summarize } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
+import { noRollCallStore, type RollCallStore } from '../infra/rollCallStore';
 import {
   AppModel,
   systemClock,
@@ -68,14 +69,22 @@ function noStudents(): HTMLElement {
 export class App {
   private readonly model: AppModel;
 
+  /** The store is wired in by `main.ts` rather than defaulted to the browser's,
+      so nothing but the running app writes to the device. */
   constructor(
     private readonly root: HTMLElement,
     sheet: SheetGateway,
     clock: Clock = systemClock,
+    store: RollCallStore = noRollCallStore,
   ) {
-    this.model = new AppModel(sheet, clock, (state) => {
-      this.draw(state);
-    });
+    this.model = new AppModel(
+      sheet,
+      clock,
+      (state) => {
+        this.draw(state);
+      },
+      store,
+    );
   }
 
   /** Sign in, read the Sheet, show the Groups. */

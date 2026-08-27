@@ -40,6 +40,14 @@ What the teacher chose for a Student during a Session — `present`, `absent`,
 `sick`, or `other`. `other` is an absence needing documentation that is not a
 sick note.
 
+**Roll Call in Progress**:
+A Session's marks and Notes before the teacher taps Save. It is never on the
+Sheet — half a roll call in the Points Ledger would score Students on a class
+that never finished — so it is kept on the device instead and picked back up
+after a reload, Session and all. Only what the teacher chose is kept: who is in
+the roll is read from the Groups Grid again each time.
+_Avoid_: draft, unsaved session, pending roll call
+
 ### Points
 
 **Point State**:

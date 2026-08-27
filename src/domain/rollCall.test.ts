@@ -6,6 +6,8 @@ import {
   markOf,
   noteOf,
   recordsToSave,
+  rememberRollCall,
+  resumeRollCall,
   setNote,
   remaining,
   unmark,
@@ -127,5 +129,36 @@ describe('recordsToSave', () => {
 
   it('returns only what is marked so far', () => {
     expect(recordsToSave(mark(begin(), 's1', 'present'))).toHaveLength(1);
+  });
+});
+
+describe('writing a roll call down and picking it back up', () => {
+  const marked = () => setNote(mark(begin(), 's1', 'sick'), 's3', 'left early');
+
+  it('keeps the Session, so the saved roll call is the same one', () => {
+    expect(rememberRollCall(marked()).session).toEqual(session);
+    expect(resumeRollCall(rememberRollCall(marked()), [group], students)?.session).toEqual(session);
+  });
+
+  it('brings back every mark and every Note', () => {
+    const resumed = resumeRollCall(rememberRollCall(marked()), [group], students);
+
+    expect(markOf(resumed!, 's1')?.status).toBe('sick');
+    expect(noteOf(resumed!, 's3')).toBe('left early');
+    // A marked Student carries their Note onto the record, the same as marking
+    // after typing does.
+    expect(setNote(resumed!, 's1', 'note from home').marks.get('s1')?.note).toBe('note from home');
+  });
+
+  it('rebuilds the roll from the Sheet, not from what was written down', () => {
+    const grown: Group = { ...group, studentIds: ['s2', 's1', 's3'] };
+
+    const resumed = resumeRollCall(rememberRollCall(marked()), [grown], students);
+
+    expect(resumed?.roll.map((student) => student.name)).toEqual(['Ben', 'Ana', 'Cara']);
+  });
+
+  it('gives nothing back when the Group has gone', () => {
+    expect(resumeRollCall(rememberRollCall(marked()), [], students)).toBeUndefined();
   });
 });

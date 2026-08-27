@@ -7,6 +7,9 @@ import { describe, expect, it } from 'vitest';
 import { AppModel, type Clock } from './appModel';
 import { FakeSheet } from '../infra/fakeSheet';
 import type { SheetGateway } from '../infra/sheetGateway';
+import type { RollCallStore } from '../infra/rollCallStore';
+import { markOf, noteOf, type SavedRollCall } from '../domain/rollCall';
+import type { Session } from '../domain/session';
 
 const STUDENTS = [
   { id: 's1', name: 'Amy' },
@@ -158,5 +161,158 @@ describe('writing outside a roll call', () => {
 
     expect(model.state.message).toEqual({ text: 'network lost', isError: true });
     expect(model.state.pendingBehavior).toBeNull();
+  });
+});
+
+describe('a reload part way through a roll call', () => {
+  /** A device that hangs on to the roll call between one page load and the
+      next, standing in for the browser's own storage. */
+  class Device implements RollCallStore {
+    private held: SavedRollCall | undefined;
+    keep(rollCall: SavedRollCall): void {
+      this.held = rollCall;
+    }
+    kept(): SavedRollCall | undefined {
+      return this.held;
+    }
+    forget(): void {
+      this.held = undefined;
+    }
+  }
+
+  /** A Sheet that loses the connection between the Attendance Records and the
+      Session row exactly once — the half-write the save order is built for. */
+  class LosesTheSessionRow extends FakeSheet {
+    private dropping = true;
+    override appendSession(session: Session): Promise<void> {
+      if (!this.dropping) return super.appendSession(session);
+      this.dropping = false;
+      return Promise.reject(new Error('network lost'));
+    }
+  }
+
+  it('puts the teacher back in the roll call she was marking', async () => {
+    const sheet = new FakeSheet({ students: STUDENTS, groups: [GROUP] });
+    const device = new Device();
+    const model = new AppModel(sheet, clock, undefined, device);
+    await model.start();
+    model.startRollCall(GROUP);
+    model.markStudent('s1', 'present');
+    model.writeNote('s2', 'left early');
+
+    // The page goes away and comes back: a new model over the same device.
+    const reloaded = new AppModel(sheet, clock, undefined, device);
+    await reloaded.start();
+
+    expect(reloaded.state.view).toBe('rollCall');
+    expect(markOf(reloaded.state.rollCall!, 's1')?.status).toBe('present');
+    expect(noteOf(reloaded.state.rollCall!, 's2')).toBe('left early');
+  });
+
+  it('saves one Session, not a second one, when the marking is redone', async () => {
+    const sheet = new FakeSheet({ students: STUDENTS, groups: [GROUP] });
+    const device = new Device();
+    const model = new AppModel(sheet, clock, undefined, device);
+    await model.start();
+    model.startRollCall(GROUP);
+    model.markStudent('s1', 'present');
+    model.markStudent('s2', 'absent');
+
+    const reloaded = new AppModel(sheet, clock, undefined, device);
+    await reloaded.start();
+    await reloaded.save();
+
+    expect(await sheet.listSessions()).toHaveLength(1);
+    expect(await sheet.listAttendance()).toHaveLength(2);
+  });
+
+  it('writes the Attendance Records once when the first save half landed', async () => {
+    const sheet = new LosesTheSessionRow({ students: STUDENTS, groups: [GROUP] });
+    const device = new Device();
+    const model = new AppModel(sheet, clock, undefined, device);
+    await model.start();
+    model.startRollCall(GROUP);
+    model.markStudent('s1', 'present');
+    model.markStudent('s2', 'present');
+
+    await model.save();
+    // The Records landed; the Session row did not. The roll call is still hers.
+    expect(await sheet.listAttendance()).toHaveLength(2);
+    expect(await sheet.listSessions()).toHaveLength(0);
+    expect(model.state.message).toEqual({ text: 'network lost', isError: true });
+
+    // She reloads and taps Save again.
+    const reloaded = new AppModel(sheet, clock, undefined, device);
+    await reloaded.start();
+    await reloaded.save();
+
+    expect(await sheet.listAttendance()).toHaveLength(2);
+    expect(await sheet.listSessions()).toHaveLength(1);
+    expect(reloaded.state.message).toEqual({ text: 'Roll call saved.', isError: false });
+  });
+
+  it('keeps nothing once the roll call is saved or thrown away', async () => {
+    const device = new Device();
+    const model = new AppModel(
+      new FakeSheet({ students: STUDENTS, groups: [GROUP] }),
+      clock,
+      undefined,
+      device,
+    );
+    await model.start();
+    model.startRollCall(GROUP);
+    model.markStudent('s1', 'present');
+    model.markStudent('s2', 'present');
+    await model.save();
+
+    expect(device.kept()).toBeUndefined();
+
+    model.startRollCall(GROUP);
+    model.discardRollCall();
+    expect(device.kept()).toBeUndefined();
+  });
+
+  it('drops a kept roll call whose Group has gone from the Sheet', async () => {
+    const device = new Device();
+    const model = new AppModel(
+      new FakeSheet({ students: STUDENTS, groups: [GROUP] }),
+      clock,
+      undefined,
+      device,
+    );
+    await model.start();
+    model.startRollCall(GROUP);
+
+    // The teacher cleared that column out of the Groups Grid meanwhile.
+    const reloaded = new AppModel(new FakeSheet({ students: STUDENTS }), clock, undefined, device);
+    await reloaded.start();
+
+    expect(reloaded.state.rollCall).toBeNull();
+    expect(reloaded.state.view).toBe('groups');
+    expect(device.kept()).toBeUndefined();
+  });
+
+  it('leaves the roll call kept when the Sheet cannot be read', async () => {
+    class ReadFails extends FakeSheet {
+      override listStudents(): Promise<never> {
+        return Promise.reject(new Error('no such tab: Students'));
+      }
+    }
+    const device = new Device();
+    const model = new AppModel(
+      new FakeSheet({ students: STUDENTS, groups: [GROUP] }),
+      clock,
+      undefined,
+      device,
+    );
+    await model.start();
+    model.startRollCall(GROUP);
+    model.markStudent('s1', 'present');
+
+    const offline = new AppModel(new ReadFails(), clock, undefined, device);
+    await offline.start();
+
+    expect(offline.state.message).toEqual({ text: 'no such tab: Students', isError: true });
+    expect(device.kept()).not.toBeUndefined();
   });
 });

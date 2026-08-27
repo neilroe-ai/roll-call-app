@@ -17,9 +17,18 @@ import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
 import type { Snapshot } from '../domain/snapshot';
 import type { PointsLedger } from '../domain/score';
-import { beginRollCall, mark, recordsToSave, setNote, type RollCall } from '../domain/rollCall';
+import {
+  beginRollCall,
+  mark,
+  recordsToSave,
+  rememberRollCall,
+  resumeRollCall,
+  setNote,
+  type RollCall,
+} from '../domain/rollCall';
 import { summarize, type StudentSummary } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
+import { noRollCallStore, type RollCallStore } from '../infra/rollCallStore';
 
 export type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes' | 'behavior';
 
@@ -81,21 +90,46 @@ export class AppModel {
     private readonly sheet: SheetGateway,
     private readonly clock: Clock = systemClock,
     private readonly onChange: (state: AppState) => void = () => undefined,
+    private readonly store: RollCallStore = noRollCallStore,
   ) {}
 
   get state(): AppState {
     return this.current;
   }
 
-  /** Sign in and read the Sheet. */
+  /** Sign in, read the Sheet, and pick up any roll call a reload interrupted. */
   async start(): Promise<void> {
     this.set({ message: { text: 'Connecting to your Sheet…', isError: false }, busy: true });
     await this.reload();
+    this.resume();
   }
 
-  /** Move to another tab. A roll call in progress survives the trip: its marks
-      and Notes are only in memory, and losing them to a stray tap would lose
-      work the teacher cannot get back. "Take roll" returns to it. */
+  /** Put the teacher back in the roll call she was marking when the page went
+      away. The Session keeps its id, so saving it now is the same write as
+      saving it then: whatever already landed is not written again.
+
+      A failed read leaves it kept for the next try. A Group that has gone means
+      there is nothing left to mark, so it is dropped. */
+  private resume(): void {
+    const data = this.current.data;
+    const kept = this.store.kept();
+    if (!data || !kept) return;
+
+    const rollCall = resumeRollCall(kept, data.groups, data.students);
+    if (!rollCall) {
+      this.store.forget();
+      return;
+    }
+    this.set({
+      rollCall,
+      view: 'rollCall',
+      message: { text: 'Carrying on where you left off.', isError: false },
+    });
+  }
+
+  /** Move to another tab. A roll call in progress survives the trip: it is not
+      on the Sheet until the teacher saves, and losing it to a stray tap would
+      lose work she cannot get back. "Take roll" returns to it. */
   show(view: View): void {
     const returning = view === 'groups' && this.current.rollCall !== null;
     this.set({
@@ -275,6 +309,14 @@ export class AppModel {
 
   private set(changes: Partial<AppState>): void {
     this.current = { ...this.current, ...changes };
+    // Written down here rather than in each action, so no way of changing the
+    // roll call can forget to do it, and what the device holds cannot drift
+    // from what is on screen.
+    if ('rollCall' in changes) {
+      const rollCall = this.current.rollCall;
+      if (rollCall) this.store.keep(rememberRollCall(rollCall));
+      else this.store.forget();
+    }
     this.onChange(this.current);
   }
 }
