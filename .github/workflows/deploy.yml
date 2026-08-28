@@ -1,0 +1,63 @@
+name: Deploy
+
+# Only after CI has gone green on main: a red tree must never reach the
+# teacher's phone. workflow_dispatch is the manual re-deploy handle.
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer commit supersedes an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The client ID is baked into the bundle at build time. It is public by
+      # design (ADR 0001), so it is a repository variable, not a secret.
+      - name: Check the client ID is configured
+        run: |
+          if [ -z "${{ vars.VITE_GOOGLE_CLIENT_ID }}" ]; then
+            echo "VITE_GOOGLE_CLIENT_ID is not set. Add it under Settings > Secrets and variables > Actions > Variables."
+            exit 1
+          fi
+
+      - run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
