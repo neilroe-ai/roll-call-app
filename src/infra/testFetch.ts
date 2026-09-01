@@ -15,16 +15,58 @@ export interface StubReply {
   body?: unknown;
 }
 
+/**
+ * How the stubs answer Drive, which the gateway asks before it trusts an id.
+ *
+ * Defaults describe the ordinary case: the remembered Sheet is still there, and
+ * Drive holds no other one. Drive calls are answered here rather than from the
+ * reply queue, so a test scripts only the Sheets traffic it is about.
+ */
+export interface DriveState {
+  /** The Sheet Drive says the app already made, if any. */
+  existing?: string | null;
+  /** Whether a remembered id still points at a Sheet outside the bin. */
+  usable?: boolean;
+  /** The remembered Sheet is gone from Drive altogether, not just binned. */
+  missing?: boolean;
+}
+
+/** Whether a url is Drive rather than Sheets, and if so what it asks. */
+function driveReply(url: string, drive: DriveState): StubReply | undefined {
+  if (!url.startsWith('https://www.googleapis.com/drive/v3/files')) return undefined;
+  if (url.includes('?q=')) {
+    const existing = drive.existing ?? null;
+    return { body: { files: existing === null ? [] : [{ id: existing }] } };
+  }
+  if (drive.missing === true) return { status: 404, body: { error: 'File not found' } };
+  return { body: { trashed: drive.usable === false } };
+}
+
 export class FetchStub {
   readonly calls: RecordedCall[] = [];
+  /** Drive traffic, kept apart so `calls` stays the Sheets story under test. */
+  readonly driveCalls: RecordedCall[] = [];
   private readonly replies: StubReply[];
 
-  constructor(replies: StubReply[] = []) {
+  constructor(
+    replies: StubReply[] = [],
+    private readonly drive: DriveState = {},
+  ) {
     this.replies = [...replies];
   }
 
   readonly fetch: FetchLike = (url, init) => {
     const rawBody = init.body;
+    const fromDrive = driveReply(url, this.drive);
+    if (fromDrive !== undefined) {
+      this.driveCalls.push({ url, method: init.method ?? 'GET', body: undefined });
+      return Promise.resolve(
+        new Response(JSON.stringify(fromDrive.body), {
+          status: fromDrive.status ?? 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    }
     this.calls.push({
       url,
       method: init.method ?? 'GET',
@@ -69,7 +111,10 @@ export class SheetFetch {
   readonly calls: RecordedCall[] = [];
   private readonly tabs = new Map<string, SheetRow[]>();
 
-  constructor(seed: Record<string, SheetRow[]> = {}) {
+  constructor(
+    seed: Record<string, SheetRow[]> = {},
+    private readonly drive: DriveState = {},
+  ) {
     for (const [title, rows] of Object.entries(seed))
       this.tabs.set(
         title,
@@ -93,6 +138,14 @@ export class SheetFetch {
   }
 
   readonly fetch: FetchLike = (url, init) => {
+    const fromDrive = driveReply(url, this.drive);
+    if (fromDrive !== undefined)
+      return Promise.resolve(
+        new Response(JSON.stringify(fromDrive.body), {
+          status: fromDrive.status ?? 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
     const method = init.method ?? 'GET';
     const rawBody = init.body;
     const body: unknown = typeof rawBody === 'string' ? JSON.parse(rawBody) : undefined;

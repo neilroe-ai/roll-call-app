@@ -70,3 +70,36 @@ describe('SheetsApi', () => {
     expect(stub.calls).toEqual([]);
   });
 });
+
+describe('SheetsApi and Drive', () => {
+  it("asks only for the app's own spreadsheets, oldest first, bin excluded", async () => {
+    const stub = new FetchStub([], { existing: 'old1' });
+    expect(await api(stub).api.findSpreadsheet('Roll Call')).toBe('old1');
+
+    const asked = decodeURIComponent(stub.driveCalls[0]?.url ?? '');
+    expect(asked).toContain("name = 'Roll Call'");
+    expect(asked).toContain('trashed = false');
+    expect(asked).toContain("mimeType = 'application/vnd.google-apps.spreadsheet'");
+    expect(asked).toContain('orderBy=createdTime');
+  });
+
+  it('answers null when Drive holds no Sheet of ours', async () => {
+    const stub = new FetchStub([], { existing: null });
+    expect(await api(stub).api.findSpreadsheet('Roll Call')).toBeNull();
+  });
+
+  it('calls a binned Sheet unusable', async () => {
+    const stub = new FetchStub([], { usable: false });
+    expect(await api(stub).api.isUsable('binned1')).toBe(false);
+  });
+
+  it('calls a Sheet that is gone unusable rather than throwing', async () => {
+    const stub = new FetchStub([], { missing: true });
+    expect(await api(stub).api.isUsable('gone1')).toBe(false);
+  });
+
+  it('calls a Sheet still in Drive usable', async () => {
+    const stub = new FetchStub([]);
+    expect(await api(stub).api.isUsable('kept1')).toBe(true);
+  });
+});

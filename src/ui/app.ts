@@ -75,7 +75,7 @@ export class App {
       so nothing but the running app writes to the device. */
   constructor(
     private readonly root: HTMLElement,
-    sheet: SheetGateway,
+    private readonly sheet: SheetGateway,
     clock: Clock = systemClock,
     store: RollCallStore = noRollCallStore,
   ) {
@@ -364,7 +364,23 @@ export class App {
     // the nav off screen would cost a tap to get back to.
     const scroller = element('div', 'scroll-x');
     scroller.append(table);
-    return [heading, controls, scroller];
+    return [heading, controls, scroller, ...this.renderSheetLink()];
+  }
+
+  /** A way to the Sheet the app is actually writing to. Drive can hold more
+      than one file called Roll Call — an earlier sign-in that made its own, or
+      one moved to the bin — and typing a class into the wrong one looks exactly
+      like the app losing it. */
+  private renderSheetLink(): HTMLElement[] {
+    const href = this.sheet.sheetLink();
+    if (href === null) return [];
+    const line = element('p', 'muted');
+    const link = element('a', undefined, 'Open the spreadsheet the app is using');
+    link.setAttribute('href', href);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener');
+    line.append(link);
+    return [line];
   }
 
   /** Awarding and subtracting Behavior Points. A point is chosen first and

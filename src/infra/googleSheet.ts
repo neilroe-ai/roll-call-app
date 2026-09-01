@@ -2,7 +2,9 @@
  * The real SheetGateway: the app's own Google Sheet.
  *
  * Per ADR 0004 the app creates the Sheet itself, so `drive.file` can reach it.
- * The id is remembered per device; a device that has never signed in makes one.
+ * The id is remembered per browser, so a device that has never signed in has
+ * nothing to go on — it asks Drive for the Sheet the app already made before
+ * making another. One teacher, one Sheet, however many browsers she uses.
  */
 import type { Adjustment } from '../domain/adjustment';
 import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
@@ -62,16 +64,41 @@ export class GoogleSheet implements SheetGateway {
     this.spreadsheetId = idStore.get();
   }
 
-  /** The app's Sheet, creating it on first use. Concurrent callers share one
-      creation: two Sheets for one teacher would silently split their data. */
-  private creating: Promise<string> | null = null;
+  /** The app's Sheet, found or created on first use. Concurrent callers share
+      one lookup: two Sheets for one teacher would silently split their data. */
+  private settling: Promise<string> | null = null;
+
+  /** Whether the remembered id has been checked against Drive this session. */
+  private checked = false;
 
   private async sheetId(): Promise<string> {
-    if (this.spreadsheetId) return this.spreadsheetId;
-    this.creating ??= this.create().finally(() => {
-      this.creating = null;
+    if (this.spreadsheetId && this.checked) return this.spreadsheetId;
+    this.settling ??= this.settle().finally(() => {
+      this.settling = null;
     });
-    return this.creating;
+    return this.settling;
+  }
+
+  /**
+   * Which Sheet this teacher's roll calls belong in.
+   *
+   * A remembered id is checked before it is trusted: a Sheet she moved to the
+   * bin still answers every read and write, so an unchecked id can quietly file
+   * a term of roll calls into a spreadsheet she can no longer see. Whatever the
+   * answer, Drive is asked for an existing Sheet before a new one is made.
+   */
+  private async settle(): Promise<string> {
+    const remembered = this.spreadsheetId;
+    if (remembered !== null && (await this.api.isUsable(remembered))) {
+      this.checked = true;
+      return remembered;
+    }
+    const found = await this.api.findSpreadsheet(SHEET_TITLE);
+    const id = found ?? (await this.create());
+    this.spreadsheetId = id;
+    this.checked = true;
+    this.idStore.set(id);
+    return id;
   }
 
   private async create(): Promise<string> {
@@ -82,14 +109,12 @@ export class GoogleSheet implements SheetGateway {
     for (const tab of ALL_TABS) {
       await this.api.updateValues(id, `${tab.title}!A1`, [[...tab.header]]);
     }
-    this.spreadsheetId = id;
-    this.idStore.set(id);
     return id;
   }
 
-  /** Run something against the app's Sheet. A remembered id can point at a file
-      the teacher deleted from Drive; a 404 means that, so the id is dropped and
-      a fresh Sheet made rather than the app failing for good. */
+  /** Run something against the app's Sheet. An id can stop working mid-session
+      — she empties the bin, or removes the file — and a 404 means that, so the
+      id is dropped and settled again rather than the app failing for good. */
   private async withSheet<T>(run: (id: string) => Promise<T>): Promise<T> {
     const id = await this.sheetId();
     try {
@@ -97,6 +122,7 @@ export class GoogleSheet implements SheetGateway {
     } catch (error) {
       if (!(error instanceof SheetsApiError) || error.status !== 404) throw error;
       this.spreadsheetId = null;
+      this.checked = false;
       return run(await this.sheetId());
     }
   }
@@ -105,6 +131,14 @@ export class GoogleSheet implements SheetGateway {
       own business, so the caller hands the rows straight back to it. */
   private valuesOf(tab: TabSchema): Promise<readonly SheetRow[]> {
     return this.withSheet((id) => this.api.getValues(id, wholeTab(tab)));
+  }
+
+  /** Where the Sheet in use can be opened. Null until the id is settled, which
+      is one read into the session. */
+  sheetLink(): string | null {
+    return this.spreadsheetId === null
+      ? null
+      : `https://docs.google.com/spreadsheets/d/${this.spreadsheetId}/edit`;
   }
 
   /** Everything the Sheet holds. The Groups Grid is squared up against the

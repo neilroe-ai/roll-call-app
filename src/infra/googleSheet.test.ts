@@ -73,6 +73,77 @@ describe('GoogleSheet first run', () => {
     expect(stub.calls).toHaveLength(1);
     expect(stub.calls[0]?.url).toContain('/kept1/values/');
   });
+
+  it('checks a remembered id against Drive once, not on every read', async () => {
+    const stub = new FetchStub([{ body: { values: [] } }, { body: { values: [] } }]);
+    const sheet = build(stub, new MemoryIdStore('kept1'));
+
+    await sheet.listStudents();
+    await sheet.listGroups();
+
+    expect(stub.driveCalls).toHaveLength(1);
+  });
+});
+
+/** The trap that cost a term of setup: `localStorage` is per browser, so Safari
+    and Chrome on one phone each arrived with nothing remembered and each made a
+    Sheet. Drive is the shared answer both of them can reach. */
+describe('GoogleSheet when another browser already made the Sheet', () => {
+  it('adopts the Sheet Drive already holds instead of creating another', async () => {
+    const stub = new FetchStub([{ body: { values: [] } }], { existing: 'old1' });
+    const store = new MemoryIdStore();
+
+    await build(stub, store).listStudents();
+
+    expect(stub.calls.filter((call) => call.method === 'POST')).toHaveLength(0);
+    expect(store.get()).toBe('old1');
+    expect(stub.calls[0]?.url).toContain('/old1/values/');
+  });
+
+  it('lands two browsers on one Sheet, each remembering nothing', async () => {
+    const first = new FetchStub([{ body: { values: [] } }], { existing: 'old1' });
+    const second = new FetchStub([{ body: { values: [] } }], { existing: 'old1' });
+    const safari = new MemoryIdStore();
+    const chrome = new MemoryIdStore();
+
+    await build(first, safari).listStudents();
+    await build(second, chrome).listStudents();
+
+    expect(safari.get()).toBe('old1');
+    expect(chrome.get()).toBe(safari.get());
+  });
+
+  it('creates one only when Drive holds none', async () => {
+    const stub = new FetchStub([...createReplies, { body: { values: [] } }], { existing: null });
+    const store = new MemoryIdStore();
+
+    await build(stub, store).listStudents();
+
+    expect(store.get()).toBe('new1');
+  });
+});
+
+describe('GoogleSheet when the remembered Sheet is in the bin', () => {
+  it('leaves the binned Sheet alone and uses the one Drive still lists', async () => {
+    // A binned Sheet answers every read and write, so an unchecked id would
+    // file a term of roll calls into a spreadsheet she cannot see.
+    const stub = new FetchStub([{ body: { values: [] } }], { usable: false, existing: 'old1' });
+    const store = new MemoryIdStore('binned1');
+
+    await build(stub, store).listStudents();
+
+    expect(stub.calls[0]?.url).toContain('/old1/values/');
+    expect(store.get()).toBe('old1');
+  });
+
+  it('makes a Sheet when the remembered one is gone and Drive holds none', async () => {
+    const stub = new FetchStub([...createReplies, { body: { values: [] } }], { missing: true });
+    const store = new MemoryIdStore('gone1');
+
+    await build(stub, store).listStudents();
+
+    expect(store.get()).toBe('new1');
+  });
 });
 
 describe('GoogleSheet when the remembered Sheet is gone', () => {
@@ -432,5 +503,19 @@ describe('the whole of the port', () => {
     expect(SUMMARY_TAB.notes(fetch.rows(SUMMARY_TAB.title)).get('s1')).toEqual([
       '2026-08-25: Mother called',
     ]);
+  });
+});
+
+describe('GoogleSheet link to the Sheet in use', () => {
+  it('has none until the id is settled', () => {
+    expect(build(new FetchStub(), new MemoryIdStore()).sheetLink()).toBeNull();
+  });
+
+  it('points at the Sheet the reads went to', async () => {
+    const stub = new FetchStub([{ body: { values: [] } }], { existing: 'old1' });
+    const sheet = build(stub, new MemoryIdStore());
+    await sheet.listStudents();
+
+    expect(sheet.sheetLink()).toBe('https://docs.google.com/spreadsheets/d/old1/edit');
   });
 });
