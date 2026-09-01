@@ -8,6 +8,7 @@ import type { TokenProvider } from './googleAuth';
 import type { SheetRow } from './rows';
 
 const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
+const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files';
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -27,6 +28,14 @@ interface ValueRange {
 
 interface CreatedSpreadsheet {
   spreadsheetId?: string;
+}
+
+interface DriveFileList {
+  files?: { id?: string }[];
+}
+
+interface DriveFile {
+  trashed?: boolean;
 }
 
 export class SheetsApi {
@@ -71,6 +80,39 @@ export class SheetsApi {
     });
     if (!created.spreadsheetId) throw new Error('Sheets API created a file with no id');
     return created.spreadsheetId;
+  }
+
+  /**
+   * The id of a spreadsheet with this title that the app has already made for
+   * the signed-in teacher, or null.
+   *
+   * `drive.file` narrows the listing to the app's own files, so this can never
+   * see anything else in her Drive. Oldest first, so every browser she signs in
+   * from settles on the same one.
+   */
+  async findSpreadsheet(title: string): Promise<string | null> {
+    const query =
+      `name = '${title.replace(/'/g, "\\'")}' and ` +
+      `mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+    const url =
+      `${DRIVE_FILES}?q=${encodeURIComponent(query)}` +
+      `&orderBy=createdTime&pageSize=1&fields=${encodeURIComponent('files(id)')}&spaces=drive`;
+    const body = await this.send<DriveFileList>(url, { method: 'GET' });
+    return body.files?.[0]?.id ?? null;
+  }
+
+  /** Whether a remembered id still points at a Sheet worth writing to. A file
+      in the bin still answers every read and write, so without this the app
+      keeps filing roll calls into a spreadsheet she cannot see. */
+  async isUsable(spreadsheetId: string): Promise<boolean> {
+    const url = `${DRIVE_FILES}/${spreadsheetId}?fields=${encodeURIComponent('trashed')}`;
+    try {
+      const file = await this.send<DriveFile>(url, { method: 'GET' });
+      return file.trashed !== true;
+    } catch (error) {
+      if (error instanceof SheetsApiError && error.status === 404) return false;
+      throw error;
+    }
   }
 
   /** Every row of a tab. An empty tab comes back with no `values` key at all. */

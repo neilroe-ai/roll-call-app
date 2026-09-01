@@ -48,6 +48,11 @@ export interface SheetGateway {
     snapshot: Snapshot,
   ): Promise<void>;
 
+  /** Where the Sheet the app is writing to can be opened, or null before it
+      knows. Shown to the teacher: when the app and the spreadsheet she is
+      typing into are not the same file, nothing else on screen says so. */
+  sheetLink(): string | null;
+
   /** Write a Note about a Student outside any roll call. It lands in that
       Student's Notes Log, dated `on`. No Score changes. */
   saveNote(studentId: string, text: string, on: CalendarDate, snapshot: Snapshot): Promise<void>;

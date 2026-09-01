@@ -115,6 +115,7 @@ test('the whole screen is disabled while a write is in flight', async () => {
     { students: STUDENTS, groups: [GROUP] },
     {
       gateway: (sheet) => ({
+        sheetLink: () => sheet.sheetLink(),
         read: () => sheet.read(),
         saveRollCall: (rollCall, snapshot) => sheet.saveRollCall(rollCall, snapshot),
         saveBehavior: (point, snapshot) => sheet.saveBehavior(point, snapshot),
@@ -155,4 +156,27 @@ test('the field the teacher is typing into keeps the caret across a redraw', () 
   screen.control('Ben: Other').click();
   expect(document.activeElement).toBe(screen.field());
   expect(screen.field()?.getAttribute('aria-label')).toBe('Note for Ben');
+});
+
+test('the summary offers a way to the Sheet the app is writing to', async () => {
+  screen = await openApp(
+    { students: STUDENTS, groups: [GROUP] },
+    {
+      // The FakeSheet has no file behind it, so the link is stubbed on top.
+      gateway: (sheet) => ({
+        read: () => sheet.read(),
+        saveRollCall: (rollCall, snapshot) => sheet.saveRollCall(rollCall, snapshot),
+        saveBehavior: (point, snapshot) => sheet.saveBehavior(point, snapshot),
+        resolveHeldPoint: (session, student, state, snapshot) =>
+          sheet.resolveHeldPoint(session, student, state, snapshot),
+        saveNote: (student, text, on, snapshot) => sheet.saveNote(student, text, on, snapshot),
+        sheetLink: () => 'https://docs.google.com/spreadsheets/d/old1/edit',
+      }),
+    },
+  );
+  screen.button('Summary').click();
+
+  const link = screen.root.querySelector('a');
+  expect(link?.textContent).toBe('Open the spreadsheet the app is using');
+  expect(link?.getAttribute('href')).toBe('https://docs.google.com/spreadsheets/d/old1/edit');
 });

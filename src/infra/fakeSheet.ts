@@ -117,6 +117,11 @@ export class FakeSheet implements SheetGateway {
     return Promise.resolve(SUMMARY_TAB.notes(this.rowsOf(SUMMARY_TAB.title)));
   }
 
+  /** No file behind it, so nothing to open. */
+  sheetLink(): string | null {
+    return null;
+  }
+
   syncGroupsGrid(students: readonly Student[]): Promise<void> {
     const rows = this.rowsOf(GROUPS_TAB.title);
     GROUPS_TAB.columnsFor(rows, students).forEach((columns, index) => {

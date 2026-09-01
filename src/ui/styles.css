@@ -324,3 +324,12 @@ table.summary tr:first-child th {
 .controls .muted {
   margin: 0;
 }
+
+a {
+  color: var(--accent);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
