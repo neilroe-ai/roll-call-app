@@ -342,7 +342,7 @@ export class App {
 
     const table = element('table', 'summary');
     const head = element('tr');
-    for (const label of ['Name', 'Score', 'Here', 'Absent', 'Sick', 'Other']) {
+    for (const label of ['Name', 'Score', 'Here', 'Absent', 'Sick', 'Other', 'Attending']) {
       head.append(element('th', undefined, label));
     }
     table.append(head);
@@ -357,6 +357,15 @@ export class App {
         const text = asShare ? shareText(count, summary.sessions) : String(count);
         row.append(element('td', undefined, text));
       }
+      // Attendance Credit: present plus the sick and other days whose Held
+      // Points the teacher has awarded — what graduation is judged on.
+      row.append(
+        element(
+          'td',
+          'credit',
+          asShare ? shareText(summary.credited, summary.sessions) : String(summary.credited),
+        ),
+      );
       table.append(row);
     }
     // On a phone narrower than the table, the table scrolls sideways inside

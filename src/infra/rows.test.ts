@@ -307,6 +307,7 @@ describe('the summary tab', () => {
     score: 4,
     sessions: 6,
     counts: { present: 3, absent: 1, sick: 0, other: 2 },
+    credited: 4,
     notes: ['2026-08-25: forgot her book', '2026-08-26: flu'],
   };
   const row = (one = summary) => SUMMARY_TAB.block([one])[0]!;
@@ -326,6 +327,8 @@ describe('the summary tab', () => {
       '0%',
       '2',
       '33%',
+      '4',
+      '67%',
       '2026-08-25: forgot her book\n2026-08-26: flu',
     ]);
   });
@@ -341,7 +344,7 @@ describe('the summary tab', () => {
   it('reads a blank or missing notes cell as no notes', () => {
     const values = holding(
       SUMMARY_TAB,
-      ['s1', 'Ana', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['s1', 'Ana', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
       ['s2', 'Ben'],
     );
     expect(SUMMARY_TAB.notes(values).get('s1')).toEqual([]);
@@ -364,7 +367,7 @@ describe('the summary tab', () => {
   });
 
   it('names the rightmost column, for the range a rewrite covers', () => {
-    expect(SUMMARY_TAB.lastColumn).toBe('N');
+    expect(SUMMARY_TAB.lastColumn).toBe('P');
   });
 });
 

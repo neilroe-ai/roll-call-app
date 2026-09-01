@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sessionsFor, shareOf, summarize, countsFor } from './studentSummary';
+import { sessionsFor, shareOf, summarize, countsFor, creditedFor } from './studentSummary';
 import type { Group, Student } from './group';
 import type { PointsLedger } from './score';
 import type { AttendanceRecord, Session } from './session';
@@ -51,6 +51,38 @@ describe('countsFor', () => {
       sick: 0,
       other: 0,
     });
+  });
+});
+
+describe('creditedFor', () => {
+  it('credits the days present and nothing that is still held', () => {
+    // s1: two present, one sick still waiting on the note.
+    expect(creditedFor('s1', ledger, noAdjustment())).toBe(2);
+  });
+
+  it('credits a sick or other day once its held point is awarded', () => {
+    const awarded: PointsLedger = {
+      attendance: [record('s1', 'present', 'awarded'), record('s1', 'sick', 'awarded')],
+      behavior: [],
+    };
+    expect(creditedFor('s1', awarded, noAdjustment())).toBe(2);
+  });
+
+  it('credits nothing for a denied day, sick or absent', () => {
+    const denied: PointsLedger = {
+      attendance: [record('s1', 'sick', 'denied'), record('s1', 'absent', 'denied')],
+      behavior: [],
+    };
+    expect(creditedFor('s1', denied, noAdjustment())).toBe(0);
+  });
+
+  it('adds the attendance the teacher carried in, absences aside', () => {
+    const carried: Adjustment = {
+      points: 0,
+      counts: { present: 10, absent: 4, sick: 2, other: 1 },
+    };
+    // 2 awarded in the ledger, plus 10 + 2 + 1 carried in.
+    expect(creditedFor('s1', ledger, carried)).toBe(15);
   });
 });
 

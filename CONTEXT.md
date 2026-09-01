@@ -102,13 +102,21 @@ tab read back before the tab is rewritten.
 **Student Summary**:
 What the Summary tab says about one Student besides their name: their Groups,
 their Score, the Sessions they could have been at, their Attendance Counts with
-each one's share, and their Notes Log. Every figure is worked out from the
+each one's share, their Attendance Credit, and their Notes Log. Every figure is worked out from the
 Points Ledger and the Student's Adjustment, so the app rewrites the whole
 summary on each save. Nothing reads a total back out of it.
 Because every figure is derived, the app can work out what a summary will say
 once an action lands without reading the Sheet again — which is how a Score and
 the action that moved it reach the Sheet in one write.
 _Avoid_: stats, report card
+
+**Attendance Credit**:
+The Sessions that count toward a Student graduating: the days present, plus the
+sick and other days whose Held Point the teacher has awarded. A day still held,
+or denied, counts for nothing. Attendance carried in as an Adjustment counts in
+full apart from its absences. Shown on the Summary as a count and as a share of
+the Student's Sessions — the figure the teacher reads to decide who qualifies.
+_Avoid_: attendance rate, eligibility, qualifying days
 
 **Snapshot**:
 Everything the app read from the Sheet in one go: the Students, the Groups, the

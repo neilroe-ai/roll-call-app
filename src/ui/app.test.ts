@@ -93,16 +93,21 @@ test('the summary counts each status, and can show them as a share instead', asy
   });
   screen.button('Summary').click();
 
-  // Name, Score, then one column per status. Amy: one Here and one Other over
-  // two sessions, and a Score of 1 for the awarded point.
-  expect(screen.all('tr')).toEqual(['NameScoreHereAbsentSickOther', 'Amy11001', 'Ben00110']);
+  // Name, Score, then one column per status, then Attendance Credit. Amy: one
+  // Here and one Other over two sessions, a Score of 1 for the awarded point,
+  // and a credit of 1 — her Other is still held, so it counts for nothing yet.
+  expect(screen.all('tr')).toEqual([
+    'NameScoreHereAbsentSickOtherAttending',
+    'Amy110011',
+    'Ben001100',
+  ]);
 
   // The table is wider than a small phone, so it scrolls inside its own box
   // rather than scrolling the page and taking the nav off screen with it.
   expect(screen.root.querySelector('.scroll-x table.summary')).toBeTruthy();
 
   screen.button('Show %').click();
-  expect(screen.all('tr')[1]).toBe('Amy150%0%0%50%');
+  expect(screen.all('tr')[1]).toBe('Amy150%0%0%50%50%');
   expect(screen.button('Show days').getAttribute('aria-pressed')).toBe('true');
 });
 

@@ -232,6 +232,7 @@ describe('the summary tab', () => {
       score: 2,
       sessions: 1,
       counts: OUR_COUNTS,
+      credited: 1,
       notes: ['2026-08-26: flu'],
     },
   ];
@@ -242,7 +243,7 @@ describe('the summary tab', () => {
 
     const write = stub.calls[1];
     expect(write?.method).toBe('PUT');
-    expect(write?.url).toContain(encodeURIComponent('Summary!A2:N2'));
+    expect(write?.url).toContain(encodeURIComponent('Summary!A2:P2'));
     expect(write?.body).toMatchObject({
       values: [
         [
@@ -259,6 +260,8 @@ describe('the summary tab', () => {
           '0%',
           '0',
           '0%',
+          '1',
+          '100%',
           '2026-08-26: flu',
         ],
       ],
