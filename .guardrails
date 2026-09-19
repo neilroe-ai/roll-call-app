@@ -1,0 +1,16 @@
+# What this repo checks, and when. Read by ~/.githooks/pre-commit.
+#
+# This is what .husky/ used to run, moved here so one system owns it. gitleaks
+# is NOT listed: it is layer 1 now and runs on every commit in every repo.
+#
+# A push to main here deploys to GitHub Pages and reaches the teacher's phone.
+# The agent-side gate for that lives in ~/.claude/hooks/block-dangerous-git.sh,
+# which asks before pushing this repo's main.
+commit="npx lint-staged && npm run typecheck"
+commit_needs="npx"
+
+# format:check, lint, typecheck, test with a 70% coverage floor, depcruise, build.
+push="npm run check"
+push_needs="npm"
+
+skip='\.(md|txt|png|jpg|jpeg|webp|gif|ico|svg|woff2?)$'
