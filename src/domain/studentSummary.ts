@@ -30,6 +30,9 @@ export interface StudentSummary {
   /** How many Sessions the Student could have been at — the denominator. */
   sessions: number;
   counts: AttendanceCounts;
+  /** Sessions that count toward graduation: present, plus sick and other once
+      the Held Point is awarded. */
+  credited: number;
   /** The whole Notes Log, oldest first — what the Sheet should hold after this
       save, not just what was added. */
   notes: NotesLog;
@@ -50,6 +53,33 @@ export function countsFor(
     counts[status] += adjustment.counts[status];
   }
   return counts;
+}
+
+/**
+ * One Student's Attendance Credit: the Sessions that count toward graduating.
+ *
+ * A Session counts when the Student was there, or was away with documentation
+ * the teacher has accepted — so a `sick` or `other` mark adds nothing while its
+ * Held Point is still held, and nothing at all once it is denied. `absent`
+ * never counts.
+ *
+ * An Adjustment's `present`, `sick` and `other` counts are credited in full:
+ * they are attendance the teacher already settled on paper, with no Point State
+ * left to wait on.
+ */
+export function creditedFor(
+  studentId: string,
+  ledger: PointsLedger,
+  adjustment: Adjustment,
+): number {
+  const fromLedger = ledger.attendance.filter(
+    (record) =>
+      record.studentId === studentId &&
+      record.status !== 'absent' &&
+      record.pointState === 'awarded',
+  ).length;
+  const carried = adjustment.counts.present + adjustment.counts.sick + adjustment.counts.other;
+  return fromLedger + carried;
 }
 
 /**
@@ -125,6 +155,7 @@ export function summarize(input: Snapshot, added?: AddedNotes): StudentSummary[]
       score: scoreFor(student.id, input.ledger, adjustment),
       sessions: sessionsFor(student.id, input.groups, input.sessions, adjustment),
       counts: countsFor(student.id, input.ledger, adjustment),
+      credited: creditedFor(student.id, input.ledger, adjustment),
       notes,
     };
   });

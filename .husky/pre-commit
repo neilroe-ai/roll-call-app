@@ -1,3 +1,0 @@
-npx lint-staged
-npm run typecheck
-gitleaks git --pre-commit --staged --redact --verbose

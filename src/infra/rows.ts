@@ -127,6 +127,8 @@ const SUMMARY_HEADER = [
   'Sick %',
   'Other',
   'Other %',
+  'Attending',
+  'Attending %',
   'Notes',
 ];
 
@@ -288,7 +290,9 @@ function decodeSummaryNotes(values: readonly SheetRow[]): Map<string, string[]> 
 }
 
 /** One Summary row, in tab order. Counts are shown next to their share of the
-    Student's own Sessions, so a raw number is never read as a rate. */
+    Student's own Sessions, so a raw number is never read as a rate. Attending
+    is the Attendance Credit: the share the teacher reads to decide whether a
+    Student qualifies to graduate. */
 function encodeSummary(summary: StudentSummary): string[] {
   const share = (count: number): string => shareText(count, summary.sessions);
   return [
@@ -305,6 +309,8 @@ function encodeSummary(summary: StudentSummary): string[] {
     share(summary.counts.sick),
     String(summary.counts.other),
     share(summary.counts.other),
+    String(summary.credited),
+    share(summary.credited),
     encodeNotes(summary.notes),
   ];
 }
