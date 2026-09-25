@@ -38,6 +38,35 @@ interface DriveFile {
   trashed?: boolean;
 }
 
+/** One column group on a tab: the columns it covers, zero-based with the end
+    excluded, and whether the teacher has it hidden. */
+export interface ColumnGroup {
+  start: number;
+  end: number;
+  collapsed: boolean;
+}
+
+/** One tab as the spreadsheet describes it, rather than what is in its cells. */
+export interface TabLayout {
+  sheetId: number;
+  title: string;
+  columnGroups: ColumnGroup[];
+}
+
+interface SpreadsheetLayout {
+  sheets?: {
+    properties?: { sheetId?: number; title?: string };
+    columnGroups?: {
+      range?: { startIndex?: number; endIndex?: number };
+      collapsed?: boolean;
+    }[];
+  }[];
+}
+
+interface BatchUpdateReply {
+  replies?: { addSheet?: { properties?: { sheetId?: number } } }[];
+}
+
 export class SheetsApi {
   constructor(
     private readonly tokens: TokenProvider,
@@ -113,6 +142,75 @@ export class SheetsApi {
       if (error instanceof SheetsApiError && error.status === 404) return false;
       throw error;
     }
+  }
+
+  /** Every tab's id, title and column groups. The cells are left out: this is
+      the spreadsheet's shape, and the values have their own read. */
+  async layout(spreadsheetId: string): Promise<TabLayout[]> {
+    const fields = 'sheets(properties(sheetId,title),columnGroups(range,collapsed))';
+    const url = `${BASE}/${spreadsheetId}?fields=${encodeURIComponent(fields)}`;
+    const body = await this.send<SpreadsheetLayout>(url, { method: 'GET' });
+    return (body.sheets ?? []).map((sheet) => ({
+      sheetId: sheet.properties?.sheetId ?? 0,
+      title: sheet.properties?.title ?? '',
+      columnGroups: (sheet.columnGroups ?? []).map((group) => ({
+        start: group.range?.startIndex ?? 0,
+        end: group.range?.endIndex ?? 0,
+        collapsed: group.collapsed === true,
+      })),
+    }));
+  }
+
+  /** Add a tab and hand back its id. A Sheet made before the tab existed in
+      the app has no such tab, and every write to it would fail. */
+  async addTab(spreadsheetId: string, title: string): Promise<number> {
+    const replies = await this.batchUpdate(spreadsheetId, [
+      { addSheet: { properties: { title } } },
+    ]);
+    const sheetId = replies[0]?.addSheet?.properties?.sheetId;
+    if (sheetId === undefined) throw new Error(`Sheets API added "${title}" with no id`);
+    return sheetId;
+  }
+
+  /** Replace a tab's column groups: remove `from`, then add `to`, each one
+      hidden or shown as it says. One call, so the tab is never left half
+      regrouped. */
+  async regroupColumns(
+    spreadsheetId: string,
+    sheetId: number,
+    from: readonly ColumnGroup[],
+    to: readonly ColumnGroup[],
+  ): Promise<void> {
+    const range = (group: ColumnGroup) => ({
+      sheetId,
+      dimension: 'COLUMNS',
+      startIndex: group.start,
+      endIndex: group.end,
+    });
+    await this.batchUpdate(spreadsheetId, [
+      ...from.map((group) => ({ deleteDimensionGroup: { range: range(group) } })),
+      ...to.map((group) => ({ addDimensionGroup: { range: range(group) } })),
+      ...to
+        .filter((group) => group.collapsed)
+        .map((group) => ({
+          updateDimensionGroup: {
+            dimensionGroup: { range: range(group), depth: 1, collapsed: true },
+            fields: 'collapsed',
+          },
+        })),
+    ]);
+  }
+
+  private async batchUpdate(
+    spreadsheetId: string,
+    requests: readonly object[],
+  ): Promise<NonNullable<BatchUpdateReply['replies']>> {
+    if (requests.length === 0) return [];
+    const body = await this.send<BatchUpdateReply>(`${BASE}/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ requests }),
+    });
+    return body.replies ?? [];
   }
 
   /** Every row of a tab. An empty tab comes back with no `values` key at all. */

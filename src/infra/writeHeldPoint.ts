@@ -13,6 +13,7 @@
  * as writing it once.
  */
 import type { PointState } from '../domain/points';
+import type { Group } from '../domain/group';
 import type { Snapshot } from '../domain/snapshot';
 import { afterResolvedHeldPoint } from '../domain/summariesAfter';
 import type { StudentSummary } from '../domain/studentSummary';
@@ -22,6 +23,7 @@ import type { StudentSummary } from '../domain/studentSummary';
 export interface HeldPointWrites {
   setPointState(sessionId: string, studentId: string, state: PointState): Promise<void>;
   saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
+  saveScoreboard(summaries: readonly StudentSummary[], groups: readonly Group[]): Promise<void>;
 }
 
 export async function writeHeldPoint(
@@ -32,5 +34,7 @@ export async function writeHeldPoint(
   snapshot: Snapshot,
 ): Promise<void> {
   await sheet.setPointState(sessionId, studentId, state);
-  await sheet.saveStudentSummaries(afterResolvedHeldPoint(snapshot, sessionId, studentId, state));
+  const summaries = afterResolvedHeldPoint(snapshot, sessionId, studentId, state);
+  await sheet.saveStudentSummaries(summaries);
+  await sheet.saveScoreboard(summaries, snapshot.groups);
 }

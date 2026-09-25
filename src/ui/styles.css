@@ -313,6 +313,22 @@ table.summary tr:first-child th {
   width: auto;
 }
 
+/* The Scoreboard's Groups. Wraps rather than scrolls, so every class is one
+   tap away on a phone. */
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.picker button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
 .controls {
   display: flex;
   align-items: baseline;

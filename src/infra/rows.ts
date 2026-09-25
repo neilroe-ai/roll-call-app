@@ -11,6 +11,7 @@ import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { Adjustment } from '../domain/adjustment';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
+import type { ScoreboardBlock } from '../domain/scoreboard';
 import { shareText, type StudentSummary } from '../domain/studentSummary';
 
 /**
@@ -60,6 +61,23 @@ interface SummaryTab extends TabSchema {
   block(summaries: readonly StudentSummary[]): string[][];
   /** The rightmost column, in A1, for the range a rewrite covers. */
   lastColumn: string;
+}
+
+/** Where one list sits on the Scoreboard tab: zero-based columns, start
+    included, end not. */
+export interface BlockColumns {
+  title: string;
+  start: number;
+  end: number;
+}
+
+interface ScoreboardTab extends TabSchema {
+  /** Every cell, header row included, with the lists side by side. */
+  grid(blocks: readonly ScoreboardBlock[]): string[][];
+  /** The columns each list takes up — what a show/hide toggle covers. */
+  columns(blocks: readonly ScoreboardBlock[]): BlockColumns[];
+  /** The list headings as the tab holds them now, by starting column. */
+  titlesAt(values: readonly SheetRow[]): Map<number, string>;
 }
 
 interface AttendanceTab extends RecordTab<AttendanceRecord> {
@@ -147,6 +165,52 @@ export const SUMMARY_TAB: SummaryTab = {
   lastColumn: columnLetter(SUMMARY_HEADER.length - 1),
 };
 
+/** A list's Name and Score columns, then one left blank. The blank keeps two
+    lists from touching: Sheets joins column groups that touch, and one toggle
+    would then hide two classes at once. */
+const BLOCK_WIDTH = 3;
+
+/**
+ * The Scoreboard as the class sees it on a laptop: everyone, then one list per
+ * Group, side by side. The app owns every cell and rewrites the tab whenever a
+ * Score moves. Each list's columns are one Sheets column group, so the teacher
+ * hides or shows a class with the +/- above it.
+ */
+export const SCOREBOARD_TAB: ScoreboardTab = {
+  title: 'Scoreboard',
+  header: ['Everyone', 'Score'],
+  grid: scoreboardGrid,
+  columns: (blocks) =>
+    blocks.map((block, index) => ({
+      title: block.title,
+      start: index * BLOCK_WIDTH,
+      end: index * BLOCK_WIDTH + 2,
+    })),
+  titlesAt: (values) => {
+    const titles = new Map<number, string>();
+    const header = values[0] ?? [];
+    for (let column = 0; column < header.length; column += BLOCK_WIDTH) {
+      const title = optional(header, column);
+      if (title !== undefined) titles.set(column, title);
+    }
+    return titles;
+  },
+};
+
+function scoreboardGrid(blocks: readonly ScoreboardBlock[]): string[][] {
+  const depth = Math.max(0, ...blocks.map((block) => block.entries.length));
+  const rows: string[][] = [blocks.flatMap((block) => [block.title, 'Score', ''])];
+  for (let at = 0; at < depth; at += 1) {
+    rows.push(
+      blocks.flatMap((block) => {
+        const entry = block.entries[at];
+        return entry === undefined ? ['', '', ''] : [entry.name, String(entry.score), ''];
+      }),
+    );
+  }
+  return rows;
+}
+
 export const SESSIONS_TAB: RecordTab<Session> = {
   title: 'Sessions',
   header: ['Session ID', 'Group ID', 'Date & Time'],
@@ -176,6 +240,7 @@ export const ALL_TABS: readonly TabSchema[] = [
   STUDENTS_TAB,
   GROUPS_TAB,
   SUMMARY_TAB,
+  SCOREBOARD_TAB,
   SESSIONS_TAB,
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,

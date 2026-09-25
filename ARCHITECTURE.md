@@ -49,3 +49,4 @@ Architecture decisions with lasting consequences are recorded as ADRs under
 - [0010 — Resolving a Held Point is one write](docs/adr/0010-resolving-a-held-point-is-one-write.md)
 - [0011 — The Summary follows the action, not the caller](docs/adr/0011-the-summary-follows-the-action.md)
 - [0012 — Drive decides which Sheet, not the browser](docs/adr/0012-drive-decides-which-sheet.md)
+- [0013 — The Scoreboard has its own tab](docs/adr/0013-the-scoreboard-tab.md)

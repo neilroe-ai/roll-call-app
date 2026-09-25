@@ -91,6 +91,10 @@ Attendance Record.
 **Scoreboard**:
 Every Student's name and Score, highest first, and nothing else. Shown to the
 class, so it carries no Note, Attendance Status or Point State — only the total.
+It can be narrowed to one Group, showing only that Group's members. The Score
+stays the Student's whole Score, since points belong to a Student, not a Group.
+The Sheet has a Scoreboard tab too, for showing the class from a laptop: the
+same lists side by side, each one a column group she can hide or show.
 _Avoid_: leaderboard, ranking, results
 
 **Notes Log**:

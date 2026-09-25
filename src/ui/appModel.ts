@@ -73,6 +73,8 @@ export interface AppState {
   /** Whether the Summary shows each count as a share of that Student's own
       Sessions instead of a number of days. */
   asShare: boolean;
+  /** The Group the Scoreboard is narrowed to, or null for everyone. */
+  scoreGroupId: string | null;
   message: Message | null;
   busy: boolean;
 }
@@ -115,6 +117,7 @@ const INITIAL: AppState = {
   noteFor: null,
   pendingBehavior: null,
   asShare: false,
+  scoreGroupId: null,
   message: null,
   busy: false,
 };
@@ -236,6 +239,11 @@ export class AppModel {
 
   toggleShare(): void {
     this.set({ asShare: !this.current.asShare });
+  }
+
+  /** Narrow the Scoreboard to one Group, or pass null for everyone. */
+  showScoreGroup(groupId: string | null): void {
+    this.set({ scoreGroupId: groupId });
   }
 
   /** Commit the roll call being marked, then read the Sheet back. The roll
