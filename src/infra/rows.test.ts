@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  ADJUSTMENTS_TAB,
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
   GROUPS_TAB,
@@ -18,13 +19,18 @@ import {
   type SheetRow,
   type TabSchema,
 } from './rows';
+import type { StudentSummary } from '../domain/studentSummary';
 
 /** A tab holding these rows under its header, as the API hands it back. */
 const holding = (tab: TabSchema, ...rows: SheetRow[]): SheetRow[] => [tab.header, ...rows];
 
 const students = (...rows: SheetRow[]) => STUDENTS_TAB.decode(holding(STUDENTS_TAB, ...rows));
+const GROUPS = [
+  { id: 'G1', name: 'Class 01', studentIds: ['s1', 's2'] },
+  { id: 'G2', name: 'Reading circle', studentIds: ['s1'] },
+];
 const adjustments = (...rows: SheetRow[]) =>
-  STUDENTS_TAB.adjustments(holding(STUDENTS_TAB, ...rows));
+  ADJUSTMENTS_TAB.decode(holding(ADJUSTMENTS_TAB, ...rows), GROUPS);
 const attendance = (...rows: SheetRow[]) => ATTENDANCE_TAB.decode(holding(ATTENDANCE_TAB, ...rows));
 const behavior = (...rows: SheetRow[]) => BEHAVIOR_TAB.decode(holding(BEHAVIOR_TAB, ...rows));
 const sessions = (...rows: SheetRow[]) => SESSIONS_TAB.decode(holding(SESSIONS_TAB, ...rows));
@@ -163,7 +169,8 @@ describe('the groups grid columns', () => {
 });
 
 describe('adjustment cells', () => {
-  const forAna = (...cells: unknown[]) => adjustments(['s1', 'Ana', ...cells]).get('s1');
+  const forAna = (...cells: unknown[]) =>
+    adjustments(['s1', 'Ana', 'Class 01', ...cells]).get('s1|G1');
 
   it('reads the figures the teacher carried in from paper', () => {
     expect(forAna('12', '18', '2', '', '')).toEqual({
@@ -189,32 +196,63 @@ describe('adjustment cells', () => {
 
   it('names the cell when the teacher typed something unreadable', () => {
     expect(() => forAna('twelve')).toThrow(
-      'Students row 2: adjust points must be a whole number, got "twelve"',
+      'Adjustments row 2: adjust points must be a whole number, got "twelve"',
     );
   });
 
-  it('keys every student who has a row', () => {
-    const figures = adjustments(['s1', 'Ana', '5'], ['s2', 'Ben'], ['', '']);
-    expect(figures.get('s1')?.points).toBe(5);
-    expect(figures.get('s2')?.points).toBe(0);
+  it('keys each figure by student and group, skipping rows with no id', () => {
+    const figures = adjustments(
+      ['s1', 'Ana', 'Class 01', '5'],
+      ['s1', 'Ana', 'Reading circle', '2'],
+      ['', ''],
+    );
+    expect(figures.get('s1|G1')?.points).toBe(5);
+    expect(figures.get('s1|G2')?.points).toBe(2);
     expect(figures.size).toBe(2);
+  });
+
+  it('matches the group name however it is capitalised', () => {
+    expect(adjustments(['s1', 'Ana', 'reading CIRCLE', '4']).get('s1|G2')?.points).toBe(4);
+  });
+
+  it('names a group that is not on the Groups tab', () => {
+    expect(() => adjustments(['s1', 'Ana', 'Art club', '4'])).toThrow(
+      'Adjustments row 2: group "Art club" is not a heading on the Groups tab',
+    );
+  });
+
+  it('asks for the group when it is left blank', () => {
+    expect(() => adjustments(['s1', 'Ana', '', '4'])).toThrow(
+      'Adjustments row 2: group is required',
+    );
+  });
+
+  it('adds up two rows for the same student and group', () => {
+    const figures = adjustments(
+      ['s1', 'Ana', 'Class 01', '5', '1'],
+      ['s1', 'Ana', 'Class 01', '2', '3'],
+    );
+    expect(figures.get('s1|G1')).toEqual({
+      points: 7,
+      counts: { present: 4, absent: 0, sick: 0, other: 0 },
+    });
+  });
+
+  it('writes a row in the column order it reads back', () => {
+    const adjustment = { points: 4, counts: { present: 3, absent: 2, sick: 1, other: 0 } };
+    const row = ADJUSTMENTS_TAB.encode({
+      student: { id: 's1', name: 'Ana' },
+      group: GROUPS[1] ?? { id: 'G2', name: 'Reading circle', studentIds: [] },
+      adjustment,
+    });
+    expect(row).toEqual(['s1', 'Ana', 'Reading circle', '4', '3', '2', '1', '0']);
+    expect(adjustments(row).get('s1|G2')).toEqual(adjustment);
   });
 });
 
 describe('student rows the app writes for a test', () => {
-  const student = { id: 's1', name: 'Ana' };
-
-  it('writes only the two columns the teacher fills for most students', () => {
-    expect(STUDENTS_TAB.encode(student)).toEqual(['s1', 'Ana']);
-  });
-
-  it('writes an Adjustment in the column order the Students tab reads back', () => {
-    const adjustment = { points: 4, counts: { present: 3, absent: 2, sick: 1, other: 0 } };
-
-    const row = STUDENTS_TAB.encode(student, adjustment);
-
-    expect(row).toEqual(['s1', 'Ana', '4', '3', '2', '1', '0']);
-    expect(adjustments(row).get('s1')).toEqual(adjustment);
+  it('writes only the two columns the teacher fills', () => {
+    expect(STUDENTS_TAB.encode({ id: 's1', name: 'Ana' })).toEqual(['s1', 'Ana']);
   });
 });
 
@@ -268,11 +306,22 @@ describe('behavior rows', () => {
     const point = {
       id: 'b1',
       studentId: 's1',
+      groupId: 'G2',
       date: '2026-08-25',
       kind: 'negative' as const,
       note: 'shouting',
     };
     expect(behavior(BEHAVIOR_TAB.encode(point))).toEqual([point]);
+  });
+
+  it('keeps the group last, so the older columns stay where they were', () => {
+    expect(BEHAVIOR_TAB.header.at(-1)).toBe('Group ID');
+  });
+
+  it('asks for the group a point counts in', () => {
+    expect(() => behavior(['b1', 's1', '2026-08-25', 'positive', ''])).toThrow(
+      'Behavior row 2: groupId is required',
+    );
   });
 });
 
@@ -300,23 +349,30 @@ describe('date and time cells', () => {
 });
 
 describe('the summary tab', () => {
-  const summary = {
-    studentId: 's1',
-    name: 'Ana',
-    groupNames: ['Class 01', 'Class 02'],
+  const figures = {
+    groupId: 'G1',
+    groupName: 'Class 01',
     score: 4,
     sessions: 6,
     counts: { present: 3, absent: 1, sick: 0, other: 2 },
     credited: 4,
+  };
+  const summary = {
+    studentId: 's1',
+    name: 'Ana',
+    groups: [
+      figures,
+      { ...figures, groupId: 'G2', groupName: 'Reading circle', score: 1, sessions: 1 },
+    ],
     notes: ['2026-08-25: forgot her book', '2026-08-26: flu'],
   };
-  const row = (one = summary) => SUMMARY_TAB.block([one])[0]!;
+  const row = (one: StudentSummary = summary) => SUMMARY_TAB.block([one])[0]!;
 
   it('writes a row in the order the header names the columns', () => {
     expect(row()).toEqual([
       's1',
       'Ana',
-      'Class 01, Class 02',
+      'Class 01',
       '4',
       '6',
       '3',
@@ -333,12 +389,27 @@ describe('the summary tab', () => {
     ]);
   });
 
+  it('writes a row per group, with the notes log on the first only', () => {
+    const [, reading] = SUMMARY_TAB.block([summary]);
+    expect(reading?.slice(0, 4)).toEqual(['s1', 'Ana', 'Reading circle', '1']);
+    expect(reading?.at(-1)).toBe('');
+  });
+
+  it('writes one row for a student in no group, so their notes log is kept', () => {
+    const block = SUMMARY_TAB.block([{ ...summary, groups: [] }]);
+    expect(block).toHaveLength(1);
+    expect(block[0]).toHaveLength(SUMMARY_TAB.header.length);
+    expect(block[0]?.at(-1)).toBe('2026-08-25: forgot her book\n2026-08-26: flu');
+  });
+
   it('writes a row for every column the header has', () => {
     expect(row()).toHaveLength(SUMMARY_TAB.header.length);
   });
 
   it('writes the notes as a list in one cell, oldest at the top', () => {
-    expect(SUMMARY_TAB.notes(holding(SUMMARY_TAB, row())).get('s1')).toEqual(summary.notes);
+    expect(
+      SUMMARY_TAB.notes(holding(SUMMARY_TAB, ...SUMMARY_TAB.block([summary]))).get('s1'),
+    ).toEqual(summary.notes);
   });
 
   it('reads a blank or missing notes cell as no notes', () => {
@@ -352,18 +423,21 @@ describe('the summary tab', () => {
   });
 
   it('shows 0% rather than dividing by no sessions', () => {
-    const fresh = { ...summary, sessions: 0, counts: { ...summary.counts, present: 0 } };
+    const fresh = {
+      ...summary,
+      groups: [{ ...figures, sessions: 0, counts: { ...figures.counts, present: 0 } }],
+    };
     expect(row(fresh)[6]).toBe('0%');
   });
 
   it('keys each student notes log by id, skipping rows with no id', () => {
-    const values = holding(SUMMARY_TAB, row(), ['', '']);
+    const values = holding(SUMMARY_TAB, ...SUMMARY_TAB.block([summary]), ['', '']);
     expect(SUMMARY_TAB.notes(values)).toEqual(new Map([['s1', summary.notes]]));
   });
 
   it('builds the block in the order it was given, because the app owns the tab', () => {
-    const ben = { ...summary, studentId: 's2', name: 'Ben' };
-    expect(SUMMARY_TAB.block([summary, ben]).map((cells) => cells[0])).toEqual(['s1', 's2']);
+    const ben = { ...summary, studentId: 's2', name: 'Ben', groups: [figures] };
+    expect(SUMMARY_TAB.block([summary, ben]).map((cells) => cells[0])).toEqual(['s1', 's1', 's2']);
   });
 
   it('names the rightmost column, for the range a rewrite covers', () => {

@@ -17,7 +17,7 @@ export interface Snapshot {
   groups: readonly Group[];
   sessions: readonly Session[];
   ledger: PointsLedger;
-  /** The teacher's hand-typed corrections, keyed by student id. */
+  /** The teacher's hand-typed corrections, keyed by `adjustmentKey`. */
   adjustments: ReadonlyMap<string, Adjustment>;
   /** Each Student's Notes Log as the Sheet holds it, keyed by student id. */
   notes: ReadonlyMap<string, readonly string[]>;

@@ -8,7 +8,7 @@ import { SUMMARY_TAB } from './rows';
 const SCORE = SUMMARY_TAB.header.indexOf('Score');
 
 const TODAY = '2026-08-26' as CalendarDate;
-const point = awardBehavior('b1', 's1', TODAY, 'positive', 'helped tidy up');
+const point = awardBehavior('b1', 's1', 'G1', TODAY, 'positive', 'helped tidy up');
 
 /** A sheet that has the point but died before the Summary. */
 class SummaryWriteFails extends FakeSheet {
@@ -26,7 +26,10 @@ describe('writeBehavior', () => {
   });
 
   it('works the Summary out from the point it is writing', async () => {
-    const sheet = new FakeSheet({ students: [{ id: 's1', name: 'Ana' }] });
+    const sheet = new FakeSheet({
+      students: [{ id: 's1', name: 'Ana' }],
+      groups: [{ id: 'G1', name: 'Class 01', studentIds: ['s1'] }],
+    });
     await writeBehavior(sheet, point, await sheet.read());
 
     // The point counts the moment it lands, so the Score moves with it, and
@@ -67,7 +70,7 @@ describe('writeBehavior', () => {
 
   it('tells two points of the same kind apart by their id', async () => {
     const sheet = new FakeSheet({ students: [{ id: 's1', name: 'Ana' }] });
-    const second = awardBehavior('b2', 's1', TODAY, 'positive', 'helped tidy up');
+    const second = awardBehavior('b2', 's1', 'G1', TODAY, 'positive', 'helped tidy up');
 
     await writeBehavior(sheet, point, await sheet.read());
     await writeBehavior(sheet, second, await sheet.read());

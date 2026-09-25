@@ -14,6 +14,7 @@ import { scoreboardBlocks } from '../domain/scoreboard';
 import type { AttendanceRecord, Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
 import {
+  ADJUSTMENTS_TAB,
   ALL_TABS,
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
@@ -148,16 +149,17 @@ export class GoogleSheet implements SheetGateway {
       Students tab first: a Student with no row there cannot be ticked into any
       Group, so the teacher would have no way to add them. */
   async read(): Promise<Snapshot> {
+    await this.upgradeTabs();
     const students = await this.listStudents();
     await this.syncGroupsGrid(students);
-    const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
+    const [groups, sessions, attendance, behavior, notes] = await Promise.all([
       this.listGroups(),
       this.listSessions(),
       this.listAttendance(),
       this.listBehavior(),
-      this.listAdjustments(),
       this.listNotesLogs(),
     ]);
+    const adjustments = await this.listAdjustments(groups);
     return {
       students,
       groups,
@@ -178,8 +180,40 @@ export class GoogleSheet implements SheetGateway {
     return GROUPS_TAB.decode(await this.valuesOf(GROUPS_TAB));
   }
 
-  async listAdjustments(): Promise<Map<string, Adjustment>> {
-    return STUDENTS_TAB.adjustments(await this.valuesOf(STUDENTS_TAB));
+  async listAdjustments(groups: readonly Group[]): Promise<Map<string, Adjustment>> {
+    return ADJUSTMENTS_TAB.decode(await this.valuesOf(ADJUSTMENTS_TAB), groups);
+  }
+
+  /** Whether this session has already brought the Sheet's tabs up to date. */
+  private upgraded = false;
+
+  /**
+   * Bring a Sheet made by an earlier version of the app up to the tabs this one
+   * reads: any tab it lacks is added with its header. The Behavior tab gained a
+   * column on the end, so a header row shorter than its own is rewritten to name
+   * it. The Summary tab's header is the app's (ADR 0007), so it is rewritten
+   * whenever it differs. Done once per session: a tab does not go missing midway.
+   */
+  private async upgradeTabs(): Promise<void> {
+    if (this.upgraded) return;
+    await this.withSheet(async (id) => {
+      const present = new Set((await this.api.layout(id)).map((tab) => tab.title));
+      for (const tab of ALL_TABS) {
+        if (!present.has(tab.title)) {
+          await this.api.addTab(id, tab.title);
+          await this.api.updateValues(id, `${tab.title}!A1`, [[...tab.header]]);
+        }
+      }
+      for (const tab of [BEHAVIOR_TAB, SUMMARY_TAB]) {
+        const header = (await this.api.getValues(id, `${tab.title}!1:1`))[0] ?? [];
+        const stale =
+          tab === SUMMARY_TAB
+            ? tab.header.some((title, at) => header[at] !== title)
+            : header.length < tab.header.length;
+        if (stale) await this.api.updateValues(id, `${tab.title}!A1`, [[...tab.header]]);
+      }
+    });
+    this.upgraded = true;
   }
 
   async listSessions(): Promise<Session[]> {
@@ -266,7 +300,7 @@ export class GoogleSheet implements SheetGateway {
   }
 
   /**
-   * Rewrite the Scoreboard tab: everyone, then one list per Group, each list a
+   * Rewrite the Scoreboard tab: one list per Group, each list a
    * column group the teacher can hide or show.
    *
    * The values are written whole, padded over whatever the tab held, so a

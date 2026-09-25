@@ -52,7 +52,9 @@ having a heading. A Group's identity is its column *position*, not its heading,
 so renaming a Group keeps its Sessions — the same rule that already held for
 every other column in the Sheet.
 
-**Adjustments live on the Students tab.** A teacher carrying in points and
+**Adjustments live on the Students tab.** _Superseded by
+[ADR 0014](0014-points-are-kept-by-group.md): they now live on their own
+Adjustments tab, one row per Student and Group, which she also owns._ A teacher carrying in points and
 attendance from paper, or correcting a figure the app got wrong, types a number
 in a column she owns. The Score stays derived — Ledger plus Adjustment — so it
 is never a stored total, and she can always see and undo the part she supplied.

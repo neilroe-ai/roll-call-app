@@ -4,13 +4,14 @@
  * The Behavior page: awarding and subtracting Behavior Points, and the Note
  * explaining one.
  */
-import { beforeEach, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
 import { openApp, type Screen } from './testScreen';
 
 const STUDENTS = [
   { id: 's1', name: 'Amy' },
   { id: 's2', name: 'Ben' },
 ];
+const CLASS = { id: 'G1', name: 'Class 01', studentIds: ['s1', 's2'] };
 
 let screen: Screen;
 
@@ -29,7 +30,7 @@ async function award(student: string, sign: string, why?: string): Promise<void>
 }
 
 beforeEach(async () => {
-  screen = await openApp({ students: STUDENTS });
+  screen = await openApp({ students: STUDENTS, groups: [CLASS] });
   screen.button('Behavior').click();
 });
 
@@ -59,10 +60,15 @@ test('saves a positive point with the reason for it', async () => {
   const [point] = await screen.sheet.listBehavior();
   expect(point).toMatchObject({
     studentId: 's1',
+    groupId: 'G1',
     date: '2026-08-26',
     kind: 'positive',
     note: 'helped a classmate',
   });
+});
+
+test('asks for no group when the student is in only one', () => {
+  expect(screen.labels()).not.toContain('Class 01');
 });
 
 test('saves a negative point, and the reason is optional', async () => {
@@ -105,4 +111,63 @@ test('two points on one student both stand', async () => {
     '2026-08-26: +1 first',
     '2026-08-26: -1 second',
   ]);
+});
+
+describe('a student in two groups', () => {
+  const READING = { id: 'G2', name: 'Reading circle', studentIds: ['s2'] };
+  /** Reading circle met last, so it is where a point counts unless she picks. */
+  const SESSIONS = [
+    { id: 'mon', groupId: 'G1', takenAt: '2026-08-24T09:00:00+08:00' },
+    { id: 'tue', groupId: 'G2', takenAt: '2026-08-25T15:00:00+08:00' },
+  ];
+
+  beforeEach(async () => {
+    screen = await openApp({ students: STUDENTS, groups: [CLASS, READING], sessions: SESSIONS });
+    screen.button('Behavior').click();
+  });
+
+  test('offers one choice per group, only for that student', () => {
+    const choices = screen.all('[role="radio"]');
+    expect(choices).toEqual(['Class 01', 'Reading circle']);
+  });
+
+  test('starts on the group she last took roll for', () => {
+    expect(screen.button('Reading circle').getAttribute('aria-checked')).toBe('true');
+    expect(screen.button('Class 01').getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('counts the point in the group she last took roll for', async () => {
+    await award('Ben', '+1');
+    const [point] = await screen.sheet.listBehavior();
+    expect(point?.groupId).toBe('G2');
+    expect(screen.first('.message')).toContain('+1 for Ben in Reading circle');
+  });
+
+  test('counts the point in the group she picks, one at a time', async () => {
+    screen.button('Class 01').click();
+    expect(screen.button('Class 01').getAttribute('aria-checked')).toBe('true');
+    expect(screen.button('Reading circle').getAttribute('aria-checked')).toBe('false');
+
+    await award('Ben', '-1');
+    const [point] = await screen.sheet.listBehavior();
+    expect(point?.groupId).toBe('G1');
+  });
+
+  test('moves a point already chosen when the group is changed', async () => {
+    screen.control('+1 for Ben').click();
+    screen.button('Class 01').click();
+    screen.button('Save +1').click();
+    await screen.until(async () => {
+      expect((await screen.sheet.listBehavior())[0]?.groupId).toBe('G1');
+    });
+  });
+
+  test('keeps the point out of the other group on the scoreboard', async () => {
+    await award('Ben', '+1');
+    screen.button('Scoreboard').click();
+    screen.button('Class 01').click();
+    expect(screen.all('li')).toContain('Ben0');
+    screen.button('Reading circle').click();
+    expect(screen.all('li')).toEqual(['Ben1']);
+  });
 });

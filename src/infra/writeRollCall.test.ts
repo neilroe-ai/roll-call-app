@@ -45,7 +45,7 @@ describe('writeRollCall', () => {
   });
 
   it('works the Summary out from the roll call it is saving, not from the Sheet', async () => {
-    const sheet = new FakeSheet({ students });
+    const sheet = new FakeSheet({ students, groups: [group] });
     await writeRollCall(sheet, marked(), await sheet.read());
 
     // Ana was present, so her point is awarded and her Score is 1. Ben was

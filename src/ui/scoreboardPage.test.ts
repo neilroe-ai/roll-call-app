@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import { openApp, type Screen } from './testScreen';
-import type { Adjustment } from '../domain/adjustment';
+import type { AdjustmentRow } from '../infra/rows';
 
 const STUDENTS = [
   { id: 's1', name: 'Amy' },
@@ -15,35 +15,33 @@ const STUDENTS = [
 ];
 const GROUPS = [{ id: 'G1', name: 'Class 01', studentIds: ['s1', 's2'] }];
 
-const adjustment = (points: number): Adjustment => ({
-  points,
-  counts: { present: 0, absent: 0, sick: 0, other: 0 },
+/** An Adjustment of `points` for a Student in a Group, as the teacher would
+    type it on the Adjustments tab. */
+const adjustment = (studentId: string, groupId: string, points: number): AdjustmentRow => ({
+  student: STUDENTS.find((student) => student.id === studentId) ?? { id: studentId, name: '' },
+  group: { id: groupId, name: groupId === 'G1' ? 'Class 01' : 'Class 02', studentIds: [] },
+  adjustment: { points, counts: { present: 0, absent: 0, sick: 0, other: 0 } },
 });
 
-async function open(adjustments: Map<string, Adjustment>): Promise<Screen> {
+async function open(adjustments: AdjustmentRow[]): Promise<Screen> {
   const screen = await openApp({ students: STUDENTS, groups: GROUPS, adjustments });
   screen.button('Scoreboard').click();
   return screen;
 }
 
 test('shows the points the teacher adjusted in the sheet', async () => {
-  const screen = await open(new Map([['s1', adjustment(12)]]));
+  const screen = await open([adjustment('s1', 'G1', 12)]);
   expect(screen.all('li')[0]).toContain('Amy');
   expect(screen.all('li')[0]).toContain('12');
 });
 
 test('orders by the adjusted score, not the recorded one', async () => {
-  const screen = await open(
-    new Map([
-      ['s1', adjustment(3)],
-      ['s2', adjustment(9)],
-    ]),
-  );
+  const screen = await open([adjustment('s1', 'G1', 3), adjustment('s2', 'G1', 9)]);
   expect(screen.all('li')[0]).toContain('Ben');
 });
 
 test('shows zero for a student the teacher has not adjusted', async () => {
-  const screen = await open(new Map());
+  const screen = await open([]);
   expect(screen.all('li')).toHaveLength(2);
   expect(screen.all('li')[0]).toContain('0');
 });
@@ -59,19 +57,21 @@ describe('picking a group', () => {
     const screen = await openApp({
       students: STUDENTS,
       groups: CLASSES,
-      adjustments: new Map([
-        ['s1', adjustment(4)],
-        ['s2', adjustment(7)],
-      ]),
+      adjustments: [adjustment('s1', 'G1', 4), adjustment('s2', 'G2', 7)],
     });
     screen.button('Scoreboard').click();
     return screen;
   }
 
-  test('shows everyone until a group is picked', async () => {
+  test('shows the first group until another is picked', async () => {
     const screen = await openClasses();
-    expect(screen.all('li')).toHaveLength(2);
-    expect(screen.button('Everyone').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.all('li')).toEqual(['Amy4']);
+    expect(screen.button('Class 01').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('has no list for everyone, since points are kept by group', async () => {
+    const screen = await openClasses();
+    expect(screen.labels()).not.toContain('Everyone');
   });
 
   test('shows only the students in the group picked', async () => {
@@ -89,11 +89,19 @@ describe('picking a group', () => {
     expect(screen.all('li')).toEqual(['Amy4']);
   });
 
-  test('goes back to everyone', async () => {
-    const screen = await openClasses();
-    screen.button('Class 01').click();
-    screen.button('Everyone').click();
-    expect(screen.all('li')).toHaveLength(2);
+  test('shows a student in two groups with the score from each group', async () => {
+    const screen = await openApp({
+      students: STUDENTS,
+      groups: [
+        { id: 'G1', name: 'Class 01', studentIds: ['s1', 's2'] },
+        { id: 'G2', name: 'Class 02', studentIds: ['s1'] },
+      ],
+      adjustments: [adjustment('s1', 'G1', 4), adjustment('s1', 'G2', 9)],
+    });
+    screen.button('Scoreboard').click();
+    expect(screen.all('li')).toEqual(['Amy4', 'Ben0']);
+    screen.button('Class 02').click();
+    expect(screen.all('li')).toEqual(['Amy9']);
   });
 
   test('offers no group with nobody in it, as Take roll does not', async () => {

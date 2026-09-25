@@ -57,6 +57,7 @@ describe('FakeSheet', () => {
     await sheet.appendBehavior({
       id: 'b1',
       studentId: 's1',
+      groupId: 'G1',
       date: '2026-08-25',
       kind: 'positive',
     });
@@ -134,6 +135,7 @@ describe('saving a behavior point', () => {
     const point = {
       id: 'b1',
       studentId: 's1',
+      groupId: 'G1',
       date: '2026-08-26',
       kind: 'positive',
       note: 'helped tidy up',

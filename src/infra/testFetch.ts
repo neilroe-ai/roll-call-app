@@ -139,6 +139,12 @@ export class SheetFetch {
     return this.ids.has(title);
   }
 
+  /** Take a tab away, standing in for a Sheet made before the app had it. */
+  dropTab(title: string): void {
+    this.tabs.delete(title);
+    this.ids.delete(title);
+  }
+
   /** A tab's column groups, left to right. */
   columnGroups(title: string): ColumnGroup[] {
     return this.groups.get(title) ?? [];

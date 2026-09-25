@@ -8,7 +8,7 @@
  */
 import { BEHAVIOR_KINDS, POINT_STATES, STATUSES } from '../domain/points';
 import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
-import type { Adjustment } from '../domain/adjustment';
+import { adjustmentKey, type Adjustment } from '../domain/adjustment';
 import type { Group, Student } from '../domain/group';
 import type { AttendanceRecord, Session, Timestamp } from '../domain/session';
 import type { ScoreboardBlock } from '../domain/scoreboard';
@@ -41,9 +41,22 @@ interface RecordTab<T> extends TabSchema {
 
 interface StudentsTab extends TabSchema {
   decode(values: readonly SheetRow[]): Student[];
-  /** Every Student's Adjustment, keyed by id. */
-  adjustments(values: readonly SheetRow[]): Map<string, Adjustment>;
-  encode(student: Student, adjustment?: Adjustment): string[];
+  encode(student: Student): string[];
+}
+
+/** One Adjustment as the teacher types it: for a Student, in a Group. */
+export interface AdjustmentRow {
+  student: Student;
+  group: Group;
+  adjustment: Adjustment;
+}
+
+interface AdjustmentsTab extends TabSchema {
+  /** Every Adjustment, keyed by `adjustmentKey`. The Group column holds the
+      Group's name as the Groups Grid heads it, so `groups` is needed to know
+      which Group she meant. */
+  decode(values: readonly SheetRow[], groups: readonly Group[]): Map<string, Adjustment>;
+  encode(row: AdjustmentRow): string[];
 }
 
 interface GroupsTab extends TabSchema {
@@ -90,26 +103,45 @@ interface AttendanceTab extends RecordTab<AttendanceRecord> {
   pointColumn: string;
 }
 
-/** The list the teacher types: who is in the class, and any figures she
-    wants carried in or corrected. Per ADR 0007 the app never writes here. */
+/** The list the teacher types: who is in the class. Per ADR 0007 the app
+    never writes here. */
 export const STUDENTS_TAB: StudentsTab = {
   title: 'Students',
+  header: ['Student ID', 'Name'],
+  decode: (values) => decodeTab(values, decodeStudent),
+  encode: (student) => [student.id, student.name],
+};
+
+/**
+ * The figures the teacher wants carried in or corrected, one row per Student
+ * and Group. Points are kept by Group, so an Adjustment is too, and a row per
+ * pair keeps the tab narrow however many Groups she has: she adds a row only
+ * where she needs one. Per ADR 0007 the app never writes here.
+ */
+export const ADJUSTMENTS_TAB: AdjustmentsTab = {
+  title: 'Adjustments',
   header: [
     'Student ID',
     'Name',
+    'Group',
     'Adjust points',
     'Adjust present',
     'Adjust absent',
     'Adjust sick',
     'Adjust other',
   ],
-  decode: (values) => decodeTab(values, decodeStudent),
-  adjustments: decodeAdjustments,
-  encode: encodeStudent,
+  decode: decodeAdjustments,
+  encode: ({ student, group, adjustment }) => [
+    student.id,
+    student.name,
+    group.name,
+    String(adjustment.points),
+    ...STATUSES.map((status) => String(adjustment.counts[status])),
+  ],
 };
 
-/** Where the Adjustment columns start on the Students tab. */
-const ADJUST_FIRST = 2;
+/** Where the figures start on the Adjustments tab. */
+const ADJUST_FIRST = 3;
 
 /**
  * The Groups grid: one row per Student, one column per Group.
@@ -134,7 +166,7 @@ const GROUP_FIRST = 2;
 const SUMMARY_HEADER = [
   'Student ID',
   'Name',
-  'Groups',
+  'Group',
   'Score',
   'Sessions',
   'Present',
@@ -171,14 +203,14 @@ export const SUMMARY_TAB: SummaryTab = {
 const BLOCK_WIDTH = 3;
 
 /**
- * The Scoreboard as the class sees it on a laptop: everyone, then one list per
- * Group, side by side. The app owns every cell and rewrites the tab whenever a
+ * The Scoreboard as the class sees it on a laptop: one list per Group, side by
+ * side. The app owns every cell and rewrites the tab whenever a
  * Score moves. Each list's columns are one Sheets column group, so the teacher
  * hides or shows a class with the +/- above it.
  */
 export const SCOREBOARD_TAB: ScoreboardTab = {
   title: 'Scoreboard',
-  header: ['Everyone', 'Score'],
+  header: ['Group', 'Score'],
   grid: scoreboardGrid,
   columns: (blocks) =>
     blocks.map((block, index) => ({
@@ -228,9 +260,11 @@ export const ATTENDANCE_TAB: AttendanceTab = {
   pointColumn: columnLetter(3),
 };
 
+/** The Group ID goes last, so a Sheet made before points were kept by Group
+    keeps every column where it was. */
 export const BEHAVIOR_TAB: RecordTab<BehaviorPoint> = {
   title: 'Behavior',
-  header: ['Entry ID', 'Student ID', 'Date', 'Positive or Negative', 'Note'],
+  header: ['Entry ID', 'Student ID', 'Date', 'Positive or Negative', 'Note', 'Group ID'],
   decode: (values) => decodeTab(values, decodeBehavior),
   encode: encodeBehavior,
 };
@@ -239,6 +273,7 @@ export const BEHAVIOR_TAB: RecordTab<BehaviorPoint> = {
 export const ALL_TABS: readonly TabSchema[] = [
   STUDENTS_TAB,
   GROUPS_TAB,
+  ADJUSTMENTS_TAB,
   SUMMARY_TAB,
   SCOREBOARD_TAB,
   SESSIONS_TAB,
@@ -344,56 +379,62 @@ function decodeNotes(cell: unknown): string[] {
 
 /** The Notes Log of every Student on the Summary tab, keyed by id. Read back
     before the tab is rewritten, because a Note is kept nowhere else. Rows the
-    app cannot read are skipped: a summary must never stop a roll call. */
+    app cannot read are skipped: a summary must never stop a roll call.
+
+    A Student has a row per Group but one Notes Log, on their first row. A
+    Sheet from before points were kept by Group has one row per Student, so
+    the first row is right for both. */
 function decodeSummaryNotes(values: readonly SheetRow[]): Map<string, string[]> {
   const notes = new Map<string, string[]>();
   for (const row of values.slice(1)) {
     const id = optional(row, 0);
-    if (id !== undefined) notes.set(id, decodeNotes(row[SUMMARY_NOTES_INDEX]));
+    if (id !== undefined && !notes.has(id)) notes.set(id, decodeNotes(row[SUMMARY_NOTES_INDEX]));
   }
   return notes;
 }
 
-/** One Summary row, in tab order. Counts are shown next to their share of the
-    Student's own Sessions, so a raw number is never read as a rate. Attending
-    is the Attendance Credit: the share the teacher reads to decide whether a
-    Student qualifies to graduate. */
-function encodeSummary(summary: StudentSummary): string[] {
-  const share = (count: number): string => shareText(count, summary.sessions);
-  return [
-    summary.studentId,
-    summary.name,
-    summary.groupNames.join(', '),
-    String(summary.score),
-    String(summary.sessions),
-    String(summary.counts.present),
-    share(summary.counts.present),
-    String(summary.counts.absent),
-    share(summary.counts.absent),
-    String(summary.counts.sick),
-    share(summary.counts.sick),
-    String(summary.counts.other),
-    share(summary.counts.other),
-    String(summary.credited),
-    share(summary.credited),
-    encodeNotes(summary.notes),
-  ];
+/** The Summary rows for one Student: one per Group they are in, in tab
+    order. Counts are shown next to their share of the Student's Sessions in
+    that Group, so a raw number is never read as a rate. Attending is the
+    Attendance Credit: the share the teacher reads to decide whether a Student
+    qualifies to graduate.
+
+    The Notes Log goes on the first row only, since Notes belong to the
+    Student. A Student in no Group still gets a row, so their Notes Log has
+    somewhere to live. */
+function encodeSummary(summary: StudentSummary): string[][] {
+  const notes = encodeNotes(summary.notes);
+  if (summary.groups.length === 0) {
+    const blank = Array.from({ length: SUMMARY_NOTES_INDEX - 2 }, () => '');
+    return [[summary.studentId, summary.name, ...blank, notes]];
+  }
+  return summary.groups.map((figures, at) => {
+    const share = (count: number): string => shareText(count, figures.sessions);
+    return [
+      summary.studentId,
+      summary.name,
+      figures.groupName,
+      String(figures.score),
+      String(figures.sessions),
+      String(figures.counts.present),
+      share(figures.counts.present),
+      String(figures.counts.absent),
+      share(figures.counts.absent),
+      String(figures.counts.sick),
+      share(figures.counts.sick),
+      String(figures.counts.other),
+      share(figures.counts.other),
+      String(figures.credited),
+      share(figures.credited),
+      at === 0 ? notes : '',
+    ];
+  });
 }
 
 /** The whole Summary tab below the header, in the order the Students tab holds
     its Students. The app owns every cell, so this is written as it stands. */
 function summaryBlock(summaries: readonly StudentSummary[]): string[][] {
-  return summaries.map(encodeSummary);
-}
-
-/** One Students row as the teacher would have typed it, Adjustment included.
-    The app never writes this row — she owns it — but the fake Sheet and any
-    test that seeds one need the column order to come from here, not from a
-    second hand-counted copy. */
-function encodeStudent(student: Student, adjustment?: Adjustment): string[] {
-  if (adjustment === undefined) return [student.id, student.name];
-  const counts = STATUSES.map((status) => String(adjustment.counts[status]));
-  return [student.id, student.name, String(adjustment.points), ...counts];
+  return summaries.flatMap(encodeSummary);
 }
 
 function decodeStudent(row: SheetRow, at: number): Student {
@@ -414,9 +455,9 @@ function wholeNumber(row: SheetRow, index: number, field: string, tab: string, a
   return value;
 }
 
-/** The Adjustment one Students row carries. */
+/** The Adjustment one Adjustments row carries. */
 function decodeAdjustment(row: SheetRow, at: number): Adjustment {
-  const tab = STUDENTS_TAB.title;
+  const tab = ADJUSTMENTS_TAB.title;
   const count = (offset: number, field: string): number =>
     wholeNumber(row, ADJUST_FIRST + offset, field, tab, at);
   return {
@@ -430,13 +471,42 @@ function decodeAdjustment(row: SheetRow, at: number): Adjustment {
   };
 }
 
-/** Every Student's Adjustment, keyed by id. Students with nothing typed still
-    get an entry, so a caller never has to tell blank from missing. */
-function decodeAdjustments(values: readonly SheetRow[]): Map<string, Adjustment> {
+/** Every Adjustment, keyed by `adjustmentKey`. A row with no Student ID is
+    skipped as empty spreadsheet. A Group name that matches no Group is an
+    error she can see and fix, not a figure silently thrown away. Two rows for
+    the same Student and Group add up, as two figures she typed would on paper. */
+function decodeAdjustments(
+  values: readonly SheetRow[],
+  groups: readonly Group[],
+): Map<string, Adjustment> {
+  const tab = ADJUSTMENTS_TAB.title;
   const adjustments = new Map<string, Adjustment>();
   values.slice(1).forEach((row, index) => {
+    const at = index + 2;
     const id = optional(row, 0);
-    if (id !== undefined) adjustments.set(id, decodeAdjustment(row, index + 2));
+    if (id === undefined) return;
+    const named = required(row, 2, 'group', tab, at);
+    const group = groups.find((candidate) => candidate.name.toLowerCase() === named.toLowerCase());
+    if (group === undefined) {
+      throw new RowError(tab, at, `group "${named}" is not a heading on the Groups tab`);
+    }
+    const key = adjustmentKey(id, group.id);
+    const adding = decodeAdjustment(row, at);
+    const before = adjustments.get(key);
+    adjustments.set(
+      key,
+      before === undefined
+        ? adding
+        : {
+            points: before.points + adding.points,
+            counts: {
+              present: before.counts.present + adding.counts.present,
+              absent: before.counts.absent + adding.counts.absent,
+              sick: before.counts.sick + adding.counts.sick,
+              other: before.counts.other + adding.counts.other,
+            },
+          },
+    );
   });
   return adjustments;
 }
@@ -551,7 +621,7 @@ function decodeAttendance(row: SheetRow, at: number): AttendanceRecord {
 }
 
 function encodeBehavior(point: BehaviorPoint): string[] {
-  return [point.id, point.studentId, point.date, point.kind, point.note ?? ''];
+  return [point.id, point.studentId, point.date, point.kind, point.note ?? '', point.groupId];
 }
 
 function decodeBehavior(row: SheetRow, at: number): BehaviorPoint {
@@ -568,6 +638,7 @@ function decodeBehavior(row: SheetRow, at: number): BehaviorPoint {
       at,
     ) as CalendarDate,
     kind: oneOf(BEHAVIOR_KINDS, required(row, 3, 'kind', tab, at), 'kind', tab, at),
+    groupId: required(row, 5, 'groupId', tab, at),
   };
   const note = optional(row, 4);
   return note === undefined ? point : { ...point, note };

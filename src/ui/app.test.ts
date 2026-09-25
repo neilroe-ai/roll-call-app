@@ -93,13 +93,13 @@ test('the summary counts each status, and can show them as a share instead', asy
   });
   screen.button('Summary').click();
 
-  // Name, Score, then one column per status, then Attendance Credit. Amy: one
+  // Name, Group, Score, then one column per status, then Attendance Credit. Amy: one
   // Here and one Other over two sessions, a Score of 1 for the awarded point,
   // and a credit of 1 — her Other is still held, so it counts for nothing yet.
   expect(screen.all('tr')).toEqual([
-    'NameScoreHereAbsentSickOtherAttending',
-    'Amy110011',
-    'Ben001100',
+    'NameGroupScoreHereAbsentSickOtherAttending',
+    'Amy3A110011',
+    'Ben3A001100',
   ]);
 
   // The table is wider than a small phone, so it scrolls inside its own box
@@ -107,8 +107,23 @@ test('the summary counts each status, and can show them as a share instead', asy
   expect(screen.root.querySelector('.scroll-x table.summary')).toBeTruthy();
 
   screen.button('Show %').click();
-  expect(screen.all('tr')[1]).toBe('Amy150%0%0%50%50%');
+  expect(screen.all('tr')[1]).toBe('Amy3A150%0%0%50%50%');
   expect(screen.button('Show days').getAttribute('aria-pressed')).toBe('true');
+});
+
+test('the summary gives a student in two groups a row for each, never a total', async () => {
+  screen = await openApp({
+    students: STUDENTS,
+    groups: [GROUP, { id: 'G2', name: 'Reading', studentIds: ['s1'] }],
+    sessions: [...SESSIONS, { id: 'thu', groupId: 'G2', takenAt: '2026-08-27T15:00:00+08:00' }],
+    attendance: [
+      ...ATTENDANCE,
+      { sessionId: 'thu', studentId: 's1', status: 'present', pointState: 'awarded' },
+    ],
+  });
+  screen.button('Summary').click();
+
+  expect(screen.all('tr').slice(1)).toEqual(['Amy3A110011', 'Reading110001', 'Ben3A001100']);
 });
 
 test('the whole screen is disabled while a write is in flight', async () => {

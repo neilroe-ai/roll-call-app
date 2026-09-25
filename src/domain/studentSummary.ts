@@ -1,6 +1,9 @@
 /**
- * The per-Student report: Score, how the Attendance Statuses fell out, which
- * Groups the Student is in, and their Notes Log.
+ * The per-Student report: for each Group they are in, their Score, how the
+ * Attendance Statuses fell out and their Attendance Credit; and their Notes Log.
+ *
+ * Points are kept by Group, so every figure is per Group and there is no total
+ * across Groups. Notes belong to the Student, so there is one Notes Log.
  *
  * Every figure here is worked out from the Points Ledger and the teacher's
  * Adjustments, so the summary is a report the app rewrites, never a place a
@@ -12,20 +15,19 @@
  */
 import { adjustmentFor, type Adjustment } from './adjustment';
 import type { CalendarDate } from './behavior';
-import { isMember, type Group } from './group';
+import { isMember } from './group';
 import { emptyCounts, type AttendanceCounts } from './points';
-import { scoreFor, type PointsLedger } from './score';
+import { ledgerOf, scoreFor, type PointsLedger } from './score';
 import type { Session } from './session';
 import type { Snapshot } from './snapshot';
 import { addLine, noteLine, type NotesLog } from './notesLog';
 
 export type { AttendanceCounts };
 
-export interface StudentSummary {
-  studentId: string;
-  name: string;
-  /** The Groups the Student belongs to, by name, in Sheet column order. */
-  groupNames: string[];
+/** One Student's figures in one Group. */
+export interface GroupFigures {
+  groupId: string;
+  groupName: string;
   score: number;
   /** How many Sessions the Student could have been at — the denominator. */
   sessions: number;
@@ -33,13 +35,20 @@ export interface StudentSummary {
   /** Sessions that count toward graduation: present, plus sick and other once
       the Held Point is awarded. */
   credited: number;
+}
+
+export interface StudentSummary {
+  studentId: string;
+  name: string;
+  /** One entry per Group the Student belongs to, in Sheet column order. */
+  groups: GroupFigures[];
   /** The whole Notes Log, oldest first — what the Sheet should hold after this
       save, not just what was added. */
   notes: NotesLog;
 }
 
-/** One Student's Attendance Counts: what the Ledger recorded, plus whatever the
-    teacher adjusted by hand. */
+/** One Student's Attendance Counts in the Group `ledger` is for: what it
+    recorded, plus whatever the teacher adjusted by hand. */
 export function countsFor(
   studentId: string,
   ledger: PointsLedger,
@@ -83,8 +92,8 @@ export function creditedFor(
 }
 
 /**
- * How many Sessions a Student could have been at: every Session taken for a
- * Group they belong to, plus any the teacher adjusted in.
+ * How many Sessions a Student could have been at in one Group: every Session
+ * taken for it, plus any the teacher adjusted in.
  *
  * This is the denominator behind the percentages, and it counts Sessions the
  * Student has no Attendance Record for — a Session they were missed in still
@@ -97,15 +106,11 @@ export function creditedFor(
  * of the app's Sessions alone would be far above 100%.
  */
 export function sessionsFor(
-  studentId: string,
-  groups: readonly Group[],
+  groupId: string,
   sessions: readonly Session[],
   adjustment: Adjustment,
 ): number {
-  const theirs = new Set(
-    groups.filter((group) => isMember(group, studentId)).map((group) => group.id),
-  );
-  const recorded = sessions.filter((session) => theirs.has(session.groupId)).length;
+  const recorded = sessions.filter((session) => session.groupId === groupId).length;
   const added = Object.values(adjustment.counts).reduce((total, count) => total + count, 0);
   return recorded + added;
 }
@@ -140,7 +145,6 @@ export interface AddedNotes {
  */
 export function summarize(input: Snapshot, added?: AddedNotes): StudentSummary[] {
   return input.students.map((student) => {
-    const adjustment = adjustmentFor(student.id, input.adjustments);
     const addition = added?.byStudent.get(student.id);
     const notes =
       added === undefined
@@ -149,13 +153,20 @@ export function summarize(input: Snapshot, added?: AddedNotes): StudentSummary[]
     return {
       studentId: student.id,
       name: student.name,
-      groupNames: input.groups
+      groups: input.groups
         .filter((group) => isMember(group, student.id))
-        .map((group) => group.name),
-      score: scoreFor(student.id, input.ledger, adjustment),
-      sessions: sessionsFor(student.id, input.groups, input.sessions, adjustment),
-      counts: countsFor(student.id, input.ledger, adjustment),
-      credited: creditedFor(student.id, input.ledger, adjustment),
+        .map((group) => {
+          const adjustment = adjustmentFor(student.id, group.id, input.adjustments);
+          const ledger = ledgerOf(group.id, input.ledger, input.sessions);
+          return {
+            groupId: group.id,
+            groupName: group.name,
+            score: scoreFor(student.id, ledger, adjustment),
+            sessions: sessionsFor(group.id, input.sessions, adjustment),
+            counts: countsFor(student.id, ledger, adjustment),
+            credited: creditedFor(student.id, ledger, adjustment),
+          };
+        }),
       notes,
     };
   });

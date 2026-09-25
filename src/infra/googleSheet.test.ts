@@ -4,6 +4,7 @@ import { SheetsApi } from './sheetsApi';
 import { FetchStub, SheetFetch, StubTokens } from './testFetch';
 import {
   ALL_TABS,
+  ADJUSTMENTS_TAB,
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
   GROUPS_TAB,
@@ -230,11 +231,16 @@ describe('the summary tab', () => {
     {
       studentId: 's1',
       name: 'Ana',
-      groupNames: ['Class 01'],
-      score: 2,
-      sessions: 1,
-      counts: OUR_COUNTS,
-      credited: 1,
+      groups: [
+        {
+          groupId: 'G1',
+          groupName: 'Class 01',
+          score: 2,
+          sessions: 1,
+          counts: OUR_COUNTS,
+          credited: 1,
+        },
+      ],
       notes: ['2026-08-26: flu'],
     },
   ];
@@ -352,9 +358,10 @@ describe('the whole of the port', () => {
     new SheetFetch({
       [STUDENTS_TAB.title]: [
         STUDENTS_TAB.header,
-        [...STUDENTS_TAB.encode(STUDENTS[0]!), '3', '0', '0', '0', '0'],
+        STUDENTS_TAB.encode(STUDENTS[0]!),
         STUDENTS_TAB.encode(STUDENTS[1]!),
       ],
+      [ADJUSTMENTS_TAB.title]: [ADJUSTMENTS_TAB.header, ['s1', 'Ana', '3A', '3']],
       [GROUPS_TAB.title]: [
         [...GROUPS_TAB.header, '3A'],
         ['s1', 'Ana', 'y'],
@@ -385,8 +392,34 @@ describe('the whole of the port', () => {
     expect(snapshot.groups).toEqual([{ id: 'G1', name: '3A', studentIds: ['s1', 's2'] }]);
     expect(snapshot.sessions).toEqual([SESSION]);
     expect(snapshot.ledger.attendance[0]).toMatchObject({ studentId: 's1', pointState: 'held' });
-    expect(snapshot.adjustments.get('s1')?.points).toBe(3);
+    expect(snapshot.adjustments.get('s1|G1')?.points).toBe(3);
     expect(snapshot.notes.size).toBe(0);
+  });
+
+  it('brings a Sheet from before points were kept by group up to date', async () => {
+    const fetch = sheetHolding({
+      [BEHAVIOR_TAB.title]: [BEHAVIOR_TAB.header.slice(0, 5)],
+      [SUMMARY_TAB.title]: [
+        SUMMARY_TAB.header.map((title) => (title === 'Group' ? 'Groups' : title)),
+      ],
+    });
+    fetch.dropTab(ADJUSTMENTS_TAB.title);
+
+    const snapshot = await open(fetch).read();
+
+    expect(fetch.rows(ADJUSTMENTS_TAB.title)).toEqual([ADJUSTMENTS_TAB.header]);
+    expect(fetch.rows(BEHAVIOR_TAB.title)[0]).toEqual(BEHAVIOR_TAB.header);
+    expect(fetch.rows(SUMMARY_TAB.title)[0]).toEqual(SUMMARY_TAB.header);
+    expect(snapshot.adjustments.size).toBe(0);
+  });
+
+  it('leaves a header the teacher renamed alone on a tab she can rename', async () => {
+    const renamed = [...BEHAVIOR_TAB.header.slice(0, 5), 'Class'];
+    const fetch = sheetHolding({ [BEHAVIOR_TAB.title]: [renamed] });
+
+    await open(fetch).read();
+
+    expect(fetch.rows(BEHAVIOR_TAB.title)[0]).toEqual(renamed);
   });
 
   it('gives a new student a row in the grid before offering the groups', async () => {
@@ -448,7 +481,7 @@ describe('the whole of the port', () => {
     const fetch = sheetHolding();
     const sheet = open(fetch);
     const snapshot = await sheet.read();
-    const point = awardBehavior('b1', 's2', '2026-08-25', 'positive', 'helped');
+    const point = awardBehavior('b1', 's2', 'G1', '2026-08-25', 'positive', 'helped');
 
     const sofar = fetch.calls.length;
     await sheet.saveBehavior(point, snapshot);
@@ -467,7 +500,7 @@ describe('the whole of the port', () => {
   it('awards one point when the same behavior point is saved twice', async () => {
     const fetch = sheetHolding();
     const sheet = open(fetch);
-    const point = awardBehavior('b1', 's2', '2026-08-25', 'positive');
+    const point = awardBehavior('b1', 's2', 'G1', '2026-08-25', 'positive');
     await sheet.saveBehavior(point, await sheet.read());
 
     await sheet.saveBehavior(point, await sheet.read());
@@ -536,11 +569,19 @@ describe('GoogleSheet link to the Sheet in use', () => {
 });
 
 describe('the scoreboard tab', () => {
-  const summary = (studentId: string, name: string, score: number) =>
-    ({ studentId, name, score, groupNames: [] }) as unknown as StudentSummary;
-  const SUMMARIES = [summary('s1', 'Ana', 3), summary('s2', 'Ben', 5), summary('s3', 'Cai', 1)];
   const CLASS_A = { id: 'G1', name: '3A', studentIds: ['s1', 's2'] };
   const CLASS_B = { id: 'G2', name: '3B', studentIds: ['s3'] };
+  /** A Student with one Score, in whichever of the two classes holds them. */
+  const summary = (studentId: string, name: string, score: number) =>
+    ({
+      studentId,
+      name,
+      groups: [CLASS_A, CLASS_B]
+        .filter((group) => group.studentIds.includes(studentId))
+        .map((group) => ({ groupId: group.id, groupName: group.name, score })),
+      notes: [],
+    }) as unknown as StudentSummary;
+  const SUMMARIES = [summary('s1', 'Ana', 3), summary('s2', 'Ben', 5), summary('s3', 'Cai', 1)];
 
   /** A Sheet made before the Scoreboard tab existed, like the teacher's. */
   const olderSheet = () => new SheetFetch({ [SUMMARY_TAB.title]: [SUMMARY_TAB.header] });
@@ -553,14 +594,13 @@ describe('the scoreboard tab', () => {
     expect(fetch.hasTab(SCOREBOARD_TAB.title)).toBe(true);
   });
 
-  it('lays everyone and each class side by side, highest first', async () => {
+  it('lays each class side by side, highest first, with no list for everyone', async () => {
     const fetch = olderSheet();
     await open(fetch).saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
     expect(fetch.rows(SCOREBOARD_TAB.title)).toEqual([
-      ['Everyone', 'Score', '', '3A', 'Score', '', '3B', 'Score', ''],
-      ['Ben', '5', '', 'Ben', '5', '', 'Cai', '1', ''],
-      ['Ana', '3', '', 'Ana', '3', '', '', '', ''],
-      ['Cai', '1', '', '', '', '', '', '', ''],
+      ['3A', 'Score', '', '3B', 'Score', ''],
+      ['Ben', '5', '', 'Cai', '1', ''],
+      ['Ana', '3', '', '', '', ''],
     ]);
   });
 
@@ -570,7 +610,6 @@ describe('the scoreboard tab', () => {
     expect(fetch.columnGroups(SCOREBOARD_TAB.title)).toEqual([
       { start: 0, end: 2, collapsed: false },
       { start: 3, end: 5, collapsed: false },
-      { start: 6, end: 8, collapsed: false },
     ]);
   });
 
@@ -591,15 +630,14 @@ describe('the scoreboard tab', () => {
     const fetch = olderSheet();
     const sheet = open(fetch);
     await sheet.saveScoreboard(SUMMARIES, [CLASS_B]);
-    fetch.setCollapsed(SCOREBOARD_TAB.title, 3, true); // 3B, hidden
+    fetch.setCollapsed(SCOREBOARD_TAB.title, 0, true); // 3B, hidden
 
     // 3A is added to the left of 3B, pushing it one list along.
     await sheet.saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
 
     expect(fetch.columnGroups(SCOREBOARD_TAB.title)).toEqual([
       { start: 0, end: 2, collapsed: false },
-      { start: 3, end: 5, collapsed: false },
-      { start: 6, end: 8, collapsed: true },
+      { start: 3, end: 5, collapsed: true },
     ]);
   });
 
@@ -610,8 +648,8 @@ describe('the scoreboard tab', () => {
     await sheet.saveScoreboard([summary('s1', 'Ana', 3)], [CLASS_A]);
 
     const rows = fetch.rows(SCOREBOARD_TAB.title);
-    expect(rows[0]?.slice(0, 6)).toEqual(['Everyone', 'Score', '', '3A', 'Score', '']);
-    expect(rows[0]?.slice(6).every((cell) => cell === '')).toBe(true);
+    expect(rows[0]?.slice(0, 3)).toEqual(['3A', 'Score', '']);
+    expect(rows[0]?.slice(3).every((cell) => cell === '')).toBe(true);
     expect(rows.slice(2).every((row) => row.every((cell) => cell === ''))).toBe(true);
   });
 });

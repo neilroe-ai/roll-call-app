@@ -7,7 +7,7 @@
  * calls.
  */
 import { BEHAVIOR_KINDS, STATUSES, type AttendanceStatus } from '../domain/points';
-import { signOf } from '../domain/behavior';
+import { behaviorGroupsOf, signOf } from '../domain/behavior';
 import type { Student } from '../domain/group';
 import { markOf, noteOf, remaining } from '../domain/rollCall';
 import type { HeldPoint } from '../domain/heldPoints';
@@ -342,31 +342,54 @@ export class App {
 
     const table = element('table', 'summary');
     const head = element('tr');
-    for (const label of ['Name', 'Score', 'Here', 'Absent', 'Sick', 'Other', 'Attending']) {
+    for (const label of [
+      'Name',
+      'Group',
+      'Score',
+      'Here',
+      'Absent',
+      'Sick',
+      'Other',
+      'Attending',
+    ]) {
       head.append(element('th', undefined, label));
     }
     table.append(head);
 
+    // One row per Student and Group: points are kept by Group, so there is
+    // no figure across Groups to show. The name spans the Student's rows.
     for (const summary of summaries) {
-      const row = element('tr');
-      row.append(element('th', 'name', summary.name));
-      // The Score is a running total, never a share of anything.
-      row.append(element('td', undefined, String(summary.score)));
-      for (const status of STATUSES) {
-        const count = summary.counts[status];
-        const text = asShare ? shareText(count, summary.sessions) : String(count);
-        row.append(element('td', undefined, text));
+      const name = element('th', 'name', summary.name);
+      name.rowSpan = Math.max(1, summary.groups.length);
+      if (summary.groups.length === 0) {
+        const row = element('tr');
+        const none = element('td', 'muted', 'No group');
+        none.colSpan = 7;
+        row.append(name, none);
+        table.append(row);
       }
-      // Attendance Credit: present plus the sick and other days whose Held
-      // Points the teacher has awarded — what graduation is judged on.
-      row.append(
-        element(
-          'td',
-          'credit',
-          asShare ? shareText(summary.credited, summary.sessions) : String(summary.credited),
-        ),
-      );
-      table.append(row);
+      summary.groups.forEach((figures, at) => {
+        const row = element('tr');
+        if (at === 0) row.append(name);
+        row.append(element('td', undefined, figures.groupName));
+        // The Score is a running total, never a share of anything.
+        row.append(element('td', undefined, String(figures.score)));
+        for (const status of STATUSES) {
+          const count = figures.counts[status];
+          const text = asShare ? shareText(count, figures.sessions) : String(count);
+          row.append(element('td', undefined, text));
+        }
+        // Attendance Credit: present plus the sick and other days whose Held
+        // Points the teacher has awarded — what graduation is judged on.
+        row.append(
+          element(
+            'td',
+            'credit',
+            asShare ? shareText(figures.credited, figures.sessions) : String(figures.credited),
+          ),
+        );
+        table.append(row);
+      });
     }
     // On a phone narrower than the table, the table scrolls sideways inside
     // this rather than taking the whole page with it — a Summary that pushed
@@ -422,6 +445,31 @@ export class App {
       }
       top.append(buttons);
       item.append(top);
+
+      // Which Group the point counts in. Only asked when there is a choice:
+      // one Group at a time, starting on the one she last took roll for.
+      const theirs = behaviorGroupsOf(student.id, snapshot.groups);
+      if (theirs.length === 0) {
+        buttons.replaceChildren();
+        item.append(element('p', 'muted', 'Not in any group yet.'));
+      }
+      if (theirs.length > 1) {
+        const chosen = this.model.behaviorGroupOf(student.id);
+        const picker = element('div', 'picker');
+        picker.setAttribute('role', 'radiogroup');
+        picker.setAttribute('aria-label', `Group for ${student.name}`);
+        for (const group of theirs) {
+          const choice = element('button', undefined, group.name);
+          choice.setAttribute('role', 'radio');
+          choice.setAttribute('aria-checked', String(group.id === chosen));
+          choice.setAttribute('aria-pressed', String(group.id === chosen));
+          choice.addEventListener('click', () => {
+            this.model.chooseBehaviorGroup(student.id, group.id);
+          });
+          picker.append(choice);
+        }
+        item.append(picker);
+      }
 
       if (pending) item.append(this.renderBehaviorNote(student, pending));
       list.append(item);
@@ -542,29 +590,29 @@ export class App {
   }
 
   private renderScoreboard(state: AppState, snapshot: Snapshot): HTMLElement[] {
-    if (state.scores.length === 0) return [noStudents()];
+    if (snapshot.students.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Scoreboard');
 
     // The same Groups Take roll offers, so a class sees the list it answers to.
-    // A Group that has gone from the Sheet since it was picked shows everyone.
+    // Points are kept by Group, so there is always one Group showing: the one
+    // picked, or the first if none is, or it has gone from the Sheet since.
     const groups = snapshot.groups.filter((group) => group.studentIds.length > 0);
-    const picked = groups.find((group) => group.id === state.scoreGroupId);
+    const picked = groups.find((group) => group.id === state.scoreGroupId) ?? groups[0];
+    if (picked === undefined) {
+      return [heading, element('p', 'muted', 'Tick Students into a Group on the Groups tab.')];
+    }
     const picker = element('div', 'picker');
-    const choices: [string | null, string][] = [
-      [null, 'Everyone'],
-      ...groups.map((group): [string, string] => [group.id, group.name]),
-    ];
-    for (const [groupId, label] of choices) {
-      const button = element('button', undefined, label);
-      button.setAttribute('aria-pressed', String((picked?.id ?? null) === groupId));
+    for (const group of groups) {
+      const button = element('button', undefined, group.name);
+      button.setAttribute('aria-pressed', String(picked.id === group.id));
       button.addEventListener('click', () => {
-        this.model.showScoreGroup(groupId);
+        this.model.showScoreGroup(group.id);
       });
       picker.append(button);
     }
 
     const list = element('ul');
-    for (const entry of scoreboardOf(state.scores, picked)) {
+    for (const entry of scoreboardOf(state.summaries, picked)) {
       const row = element('li');
       const inner = element('div', 'score-row');
       inner.append(element('h2', undefined, entry.name));

@@ -11,6 +11,7 @@ import type { AttendanceRecord, Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
 import { scoreboardBlocks } from '../domain/scoreboard';
 import {
+  ADJUSTMENTS_TAB,
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
   GROUPS_TAB,
@@ -18,6 +19,7 @@ import {
   SESSIONS_TAB,
   STUDENTS_TAB,
   SUMMARY_TAB,
+  type AdjustmentRow,
   type SheetRow,
 } from './rows';
 import type { SheetGateway } from './sheetGateway';
@@ -31,9 +33,8 @@ import type { RollCall } from '../domain/rollCall';
 export interface FakeSheetSeed {
   students?: Student[];
   groups?: Group[];
-  /** Hand-typed corrections, keyed by student id, as the Students tab holds
-      them. */
-  adjustments?: ReadonlyMap<string, Adjustment>;
+  /** Hand-typed corrections, as rows of the Adjustments tab. */
+  adjustments?: readonly AdjustmentRow[];
   sessions?: Session[];
   attendance?: AttendanceRecord[];
   behavior?: BehaviorPoint[];
@@ -45,9 +46,10 @@ export class FakeSheet implements SheetGateway {
   constructor(seed: FakeSheetSeed = {}) {
     const students = seed.students ?? [];
     const groups = seed.groups ?? [];
-    this.tabs.set(STUDENTS_TAB.title, [
-      STUDENTS_TAB.header,
-      ...students.map((student) => STUDENTS_TAB.encode(student, seed.adjustments?.get(student.id))),
+    this.tabs.set(STUDENTS_TAB.title, [STUDENTS_TAB.header, ...students.map(STUDENTS_TAB.encode)]);
+    this.tabs.set(ADJUSTMENTS_TAB.title, [
+      ADJUSTMENTS_TAB.header,
+      ...(seed.adjustments ?? []).map(ADJUSTMENTS_TAB.encode),
     ]);
     this.tabs.set(GROUPS_TAB.title, groupGrid(students, groups));
     this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header]);
@@ -81,14 +83,14 @@ export class FakeSheet implements SheetGateway {
   async read(): Promise<Snapshot> {
     const students = await this.listStudents();
     await this.syncGroupsGrid(students);
-    const [groups, sessions, attendance, behavior, adjustments, notes] = await Promise.all([
+    const [groups, sessions, attendance, behavior, notes] = await Promise.all([
       this.listGroups(),
       this.listSessions(),
       this.listAttendance(),
       this.listBehavior(),
-      this.listAdjustments(),
       this.listNotesLogs(),
     ]);
+    const adjustments = await this.listAdjustments(groups);
     return { students, groups, sessions, ledger: { attendance, behavior }, adjustments, notes };
   }
 
@@ -100,8 +102,8 @@ export class FakeSheet implements SheetGateway {
     return Promise.resolve(GROUPS_TAB.decode(this.rowsOf(GROUPS_TAB.title)));
   }
 
-  listAdjustments(): Promise<Map<string, Adjustment>> {
-    return Promise.resolve(STUDENTS_TAB.adjustments(this.rowsOf(STUDENTS_TAB.title)));
+  listAdjustments(groups: readonly Group[]): Promise<Map<string, Adjustment>> {
+    return Promise.resolve(ADJUSTMENTS_TAB.decode(this.rowsOf(ADJUSTMENTS_TAB.title), groups));
   }
 
   listSessions(): Promise<Session[]> {

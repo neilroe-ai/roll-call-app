@@ -3,7 +3,8 @@
  *
  * A teacher arrives with points already given on paper, and sometimes needs to
  * correct a figure the app worked out. Both are the same thing: a number she
- * writes in the Students tab that is added to what the Ledger says.
+ * writes on the Adjustments tab that is added to what the Ledger says for one
+ * Student in one Group. Points are kept by Group, so an Adjustment is too.
  *
  * An Adjustment is an input, not a total. It is stored where she typed it and
  * never rewritten, so the Score stays derived — Ledger plus Adjustment — and
@@ -23,11 +24,17 @@ export function noAdjustment(): Adjustment {
   return { points: 0, counts: emptyCounts() };
 }
 
-/** One Student's Adjustment, or an empty one when they have not been given a
-    figure. Callers always get a whole Adjustment, never undefined. */
+/** Where one Student's Adjustment in one Group is kept in a map. */
+export function adjustmentKey(studentId: string, groupId: string): string {
+  return `${studentId}|${groupId}`;
+}
+
+/** One Student's Adjustment in one Group, or an empty one when they have not
+    been given a figure. Callers always get a whole Adjustment, never undefined. */
 export function adjustmentFor(
   studentId: string,
+  groupId: string,
   adjustments: ReadonlyMap<string, Adjustment>,
 ): Adjustment {
-  return adjustments.get(studentId) ?? noAdjustment();
+  return adjustments.get(adjustmentKey(studentId, groupId)) ?? noAdjustment();
 }
