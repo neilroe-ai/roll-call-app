@@ -20,6 +20,7 @@
  */
 import { recordsToSave, type RollCall } from '../domain/rollCall';
 import { afterRollCall } from '../domain/summariesAfter';
+import type { Group } from '../domain/group';
 import type { Snapshot } from '../domain/snapshot';
 import type { StudentSummary } from '../domain/studentSummary';
 import type { AttendanceRecord, Session } from '../domain/session';
@@ -33,6 +34,7 @@ export interface RollCallWrites {
   appendAttendance(records: readonly AttendanceRecord[]): Promise<void>;
   appendSession(session: Session): Promise<void>;
   saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
+  saveScoreboard(summaries: readonly StudentSummary[], groups: readonly Group[]): Promise<void>;
 }
 
 export async function writeRollCall(
@@ -52,5 +54,7 @@ export async function writeRollCall(
     await sheet.appendSession(rollCall.session);
   }
 
-  await sheet.saveStudentSummaries(afterRollCall(snapshot, rollCall));
+  const summaries = afterRollCall(snapshot, rollCall);
+  await sheet.saveStudentSummaries(summaries);
+  await sheet.saveScoreboard(summaries, snapshot.groups);
 }

@@ -13,6 +13,7 @@
  * again after a failure awards one point, not two.
  */
 import type { BehaviorPoint } from '../domain/behavior';
+import type { Group } from '../domain/group';
 import type { Snapshot } from '../domain/snapshot';
 import { afterBehaviorPoint } from '../domain/summariesAfter';
 import type { StudentSummary } from '../domain/studentSummary';
@@ -24,6 +25,7 @@ export interface BehaviorWrites {
   listBehavior(): Promise<BehaviorPoint[]>;
   appendBehavior(point: BehaviorPoint): Promise<void>;
   saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void>;
+  saveScoreboard(summaries: readonly StudentSummary[], groups: readonly Group[]): Promise<void>;
 }
 
 export async function writeBehavior(
@@ -36,5 +38,7 @@ export async function writeBehavior(
     await sheet.appendBehavior(point);
   }
 
-  await sheet.saveStudentSummaries(afterBehaviorPoint(snapshot, point));
+  const summaries = afterBehaviorPoint(snapshot, point);
+  await sheet.saveStudentSummaries(summaries);
+  await sheet.saveScoreboard(summaries, snapshot.groups);
 }

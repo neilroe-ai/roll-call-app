@@ -7,6 +7,7 @@ import {
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
   GROUPS_TAB,
+  SCOREBOARD_TAB,
   SESSIONS_TAB,
   STUDENTS_TAB,
   SUMMARY_TAB,
@@ -15,6 +16,7 @@ import {
 import { beginRollCall, mark } from '../domain/rollCall';
 import { awardBehavior } from '../domain/behavior';
 import { recordAttendance, type Session } from '../domain/session';
+import type { StudentSummary } from '../domain/studentSummary';
 
 const session: Session = { id: 'sess1', groupId: 'g1', takenAt: '2026-08-25T09:05:00+08:00' };
 
@@ -419,6 +421,7 @@ describe('the whole of the port', () => {
       ATTENDANCE_TAB.title,
       SESSIONS_TAB.title,
       SUMMARY_TAB.title,
+      SCOREBOARD_TAB.title,
     ]);
     // Only Ana was marked, so only Ana has a Record.
     expect(ATTENDANCE_TAB.decode(fetch.rows(ATTENDANCE_TAB.title))).toHaveLength(1);
@@ -450,7 +453,11 @@ describe('the whole of the port', () => {
     const sofar = fetch.calls.length;
     await sheet.saveBehavior(point, snapshot);
 
-    expect(fetch.written(sofar)).toEqual([BEHAVIOR_TAB.title, SUMMARY_TAB.title]);
+    expect(fetch.written(sofar)).toEqual([
+      BEHAVIOR_TAB.title,
+      SUMMARY_TAB.title,
+      SCOREBOARD_TAB.title,
+    ]);
     expect(BEHAVIOR_TAB.decode(fetch.rows(BEHAVIOR_TAB.title))).toEqual([point]);
     expect(SUMMARY_TAB.notes(fetch.rows(SUMMARY_TAB.title)).get('s2')).toEqual([
       '2026-08-25: +1 helped',
@@ -483,7 +490,11 @@ describe('the whole of the port', () => {
     const sofar = fetch.calls.length;
     await sheet.resolveHeldPoint('sess1', 's2', 'awarded', snapshot);
 
-    expect(fetch.written(sofar)).toEqual([ATTENDANCE_TAB.title, SUMMARY_TAB.title]);
+    expect(fetch.written(sofar)).toEqual([
+      ATTENDANCE_TAB.title,
+      SUMMARY_TAB.title,
+      SCOREBOARD_TAB.title,
+    ]);
     expect(ATTENDANCE_TAB.decode(fetch.rows(ATTENDANCE_TAB.title))[1]).toMatchObject({
       studentId: 's2',
       pointState: 'awarded',
@@ -502,6 +513,7 @@ describe('the whole of the port', () => {
     const sofar = fetch.calls.length;
     await sheet.saveNote('s1', 'Mother called', '2026-08-25', snapshot);
 
+    // A Note moves no Score, so the Scoreboard is left alone.
     expect(fetch.written(sofar)).toEqual([SUMMARY_TAB.title]);
     expect(SUMMARY_TAB.notes(fetch.rows(SUMMARY_TAB.title)).get('s1')).toEqual([
       '2026-08-25: Mother called',
@@ -520,5 +532,86 @@ describe('GoogleSheet link to the Sheet in use', () => {
     await sheet.listStudents();
 
     expect(sheet.sheetLink()).toBe('https://docs.google.com/spreadsheets/d/old1/edit');
+  });
+});
+
+describe('the scoreboard tab', () => {
+  const summary = (studentId: string, name: string, score: number) =>
+    ({ studentId, name, score, groupNames: [] }) as unknown as StudentSummary;
+  const SUMMARIES = [summary('s1', 'Ana', 3), summary('s2', 'Ben', 5), summary('s3', 'Cai', 1)];
+  const CLASS_A = { id: 'G1', name: '3A', studentIds: ['s1', 's2'] };
+  const CLASS_B = { id: 'G2', name: '3B', studentIds: ['s3'] };
+
+  /** A Sheet made before the Scoreboard tab existed, like the teacher's. */
+  const olderSheet = () => new SheetFetch({ [SUMMARY_TAB.title]: [SUMMARY_TAB.header] });
+  const open = (fetch: SheetFetch) =>
+    new GoogleSheet(new SheetsApi(new StubTokens(), fetch.fetch), new MemoryIdStore('kept1'));
+
+  it('adds the tab to a Sheet made before it existed', async () => {
+    const fetch = olderSheet();
+    await open(fetch).saveScoreboard(SUMMARIES, [CLASS_A]);
+    expect(fetch.hasTab(SCOREBOARD_TAB.title)).toBe(true);
+  });
+
+  it('lays everyone and each class side by side, highest first', async () => {
+    const fetch = olderSheet();
+    await open(fetch).saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
+    expect(fetch.rows(SCOREBOARD_TAB.title)).toEqual([
+      ['Everyone', 'Score', '', '3A', 'Score', '', '3B', 'Score', ''],
+      ['Ben', '5', '', 'Ben', '5', '', 'Cai', '1', ''],
+      ['Ana', '3', '', 'Ana', '3', '', '', '', ''],
+      ['Cai', '1', '', '', '', '', '', '', ''],
+    ]);
+  });
+
+  it('gives each list a column group, with a blank column between', async () => {
+    const fetch = olderSheet();
+    await open(fetch).saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
+    expect(fetch.columnGroups(SCOREBOARD_TAB.title)).toEqual([
+      { start: 0, end: 2, collapsed: false },
+      { start: 3, end: 5, collapsed: false },
+      { start: 6, end: 8, collapsed: false },
+    ]);
+  });
+
+  it('leaves the groups alone when nothing has moved, so a hidden class stays hidden', async () => {
+    const fetch = olderSheet();
+    const sheet = open(fetch);
+    await sheet.saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
+    fetch.setCollapsed(SCOREBOARD_TAB.title, 3, true);
+
+    const sofar = fetch.calls.length;
+    await sheet.saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
+
+    expect(fetch.calls.slice(sofar).some((call) => call.url.includes(':batchUpdate'))).toBe(false);
+    expect(fetch.columnGroups(SCOREBOARD_TAB.title)[1]?.collapsed).toBe(true);
+  });
+
+  it('keeps a hidden class hidden when a new class moves the lists', async () => {
+    const fetch = olderSheet();
+    const sheet = open(fetch);
+    await sheet.saveScoreboard(SUMMARIES, [CLASS_B]);
+    fetch.setCollapsed(SCOREBOARD_TAB.title, 3, true); // 3B, hidden
+
+    // 3A is added to the left of 3B, pushing it one list along.
+    await sheet.saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
+
+    expect(fetch.columnGroups(SCOREBOARD_TAB.title)).toEqual([
+      { start: 0, end: 2, collapsed: false },
+      { start: 3, end: 5, collapsed: false },
+      { start: 6, end: 8, collapsed: true },
+    ]);
+  });
+
+  it('blanks what a shorter scoreboard no longer covers', async () => {
+    const fetch = olderSheet();
+    const sheet = open(fetch);
+    await sheet.saveScoreboard(SUMMARIES, [CLASS_A, CLASS_B]);
+    await sheet.saveScoreboard([summary('s1', 'Ana', 3)], [CLASS_A]);
+
+    const rows = fetch.rows(SCOREBOARD_TAB.title);
+    expect(rows[0]?.slice(0, 6)).toEqual(['Everyone', 'Score', '', '3A', 'Score', '']);
+    expect(rows[0]?.slice(6).every((cell) => cell === '')).toBe(true);
+    expect(rows.slice(2).every((row) => row.every((cell) => cell === ''))).toBe(true);
   });
 });

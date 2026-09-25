@@ -33,6 +33,7 @@ tab:
 | Students | everything | nothing |
 | Groups | C rightwards | A, B |
 | Summary | nothing | everything |
+| Scoreboard ([ADR 0013](0013-the-scoreboard-tab.md)) | nothing | everything |
 | Sessions, Attendance, Behavior | nothing | everything |
 
 The app never writes a cell the teacher owns, and never reads a cell it owns as

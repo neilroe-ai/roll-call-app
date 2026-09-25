@@ -11,7 +11,7 @@ import { signOf } from '../domain/behavior';
 import type { Student } from '../domain/group';
 import { markOf, noteOf, remaining } from '../domain/rollCall';
 import type { HeldPoint } from '../domain/heldPoints';
-import type { ScoreboardEntry } from '../domain/scoreboard';
+import { scoreboardOf } from '../domain/scoreboard';
 import { shareText, type StudentSummary } from '../domain/studentSummary';
 import type { SheetGateway } from '../infra/sheetGateway';
 import { noRollCallStore, type RollCallStore } from '../infra/rollCallStore';
@@ -110,7 +110,7 @@ export class App {
     if (!snapshot) return;
     if (view === 'rollCall' && state.rollCall) this.root.append(...this.renderRollCall(state));
     else if (view === 'held') this.root.append(...this.renderHeld(state.held));
-    else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(state.scores));
+    else if (view === 'scoreboard') this.root.append(...this.renderScoreboard(state, snapshot));
     else if (view === 'summary')
       this.root.append(...this.renderSummary(state.summaries, state.asShare));
     else if (view === 'notes') this.root.append(...this.renderNotes(snapshot, state.noteFor));
@@ -541,11 +541,30 @@ export class App {
     return item;
   }
 
-  private renderScoreboard(entries: readonly ScoreboardEntry[]): HTMLElement[] {
-    if (entries.length === 0) return [noStudents()];
+  private renderScoreboard(state: AppState, snapshot: Snapshot): HTMLElement[] {
+    if (state.scores.length === 0) return [noStudents()];
     const heading = element('h1', undefined, 'Scoreboard');
+
+    // The same Groups Take roll offers, so a class sees the list it answers to.
+    // A Group that has gone from the Sheet since it was picked shows everyone.
+    const groups = snapshot.groups.filter((group) => group.studentIds.length > 0);
+    const picked = groups.find((group) => group.id === state.scoreGroupId);
+    const picker = element('div', 'picker');
+    const choices: [string | null, string][] = [
+      [null, 'Everyone'],
+      ...groups.map((group): [string, string] => [group.id, group.name]),
+    ];
+    for (const [groupId, label] of choices) {
+      const button = element('button', undefined, label);
+      button.setAttribute('aria-pressed', String((picked?.id ?? null) === groupId));
+      button.addEventListener('click', () => {
+        this.model.showScoreGroup(groupId);
+      });
+      picker.append(button);
+    }
+
     const list = element('ul');
-    for (const entry of entries) {
+    for (const entry of scoreboardOf(state.scores, picked)) {
       const row = element('li');
       const inner = element('div', 'score-row');
       inner.append(element('h2', undefined, entry.name));
@@ -553,6 +572,6 @@ export class App {
       row.append(inner);
       list.append(row);
     }
-    return [heading, list];
+    return [heading, picker, list];
   }
 }

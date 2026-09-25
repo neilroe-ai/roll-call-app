@@ -10,6 +10,7 @@ import type { Adjustment } from '../domain/adjustment';
 import type { BehaviorPoint, CalendarDate } from '../domain/behavior';
 import type { PointState } from '../domain/points';
 import type { Group, Student } from '../domain/group';
+import { scoreboardBlocks } from '../domain/scoreboard';
 import type { AttendanceRecord, Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
 import {
@@ -17,13 +18,15 @@ import {
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
   GROUPS_TAB,
+  SCOREBOARD_TAB,
   SESSIONS_TAB,
   STUDENTS_TAB,
   SUMMARY_TAB,
+  columnLetter,
   type SheetRow,
   type TabSchema,
 } from './rows';
-import { SheetsApiError, type SheetsApi } from './sheetsApi';
+import { SheetsApiError, type ColumnGroup, type SheetsApi, type TabLayout } from './sheetsApi';
 import type { SheetGateway } from './sheetGateway';
 import type { Snapshot } from '../domain/snapshot';
 import { writeRollCall } from './writeRollCall';
@@ -262,6 +265,57 @@ export class GoogleSheet implements SheetGateway {
     });
   }
 
+  /**
+   * Rewrite the Scoreboard tab: everyone, then one list per Group, each list a
+   * column group the teacher can hide or show.
+   *
+   * The values are written whole, padded over whatever the tab held, so a
+   * shorter list leaves no stale names below it. The column groups are only
+   * rebuilt when the lists have moved. A class she hid stays hidden across
+   * saves, and across a rebuild too: which lists were hidden is read off the
+   * headings above them, so a hidden class is still hidden after a new class
+   * is added beside it.
+   */
+  async saveScoreboard(
+    summaries: readonly StudentSummary[],
+    groups: readonly Group[],
+  ): Promise<void> {
+    await this.withSheet(async (id) => {
+      const tab = await this.scoreboardTab(id);
+      const existing = await this.api.getValues(id, SCOREBOARD_TAB.title);
+      const blocks = scoreboardBlocks(summaries, groups);
+
+      const grid = SCOREBOARD_TAB.grid(blocks);
+      const width = Math.max(...[...grid, ...existing].map((row) => row.length));
+      const height = Math.max(grid.length, existing.length);
+      const rows = Array.from({ length: height }, (_, at) =>
+        Array.from({ length: width }, (_, column) => grid[at]?.[column] ?? ''),
+      );
+      const range = `${SCOREBOARD_TAB.title}!A1:${columnLetter(width - 1)}${String(height)}`;
+      await this.api.updateValues(id, range, rows);
+
+      const titles = SCOREBOARD_TAB.titlesAt(existing);
+      const hidden = new Set(
+        tab.columnGroups.filter((group) => group.collapsed).map((group) => titles.get(group.start)),
+      );
+      const wanted: ColumnGroup[] = SCOREBOARD_TAB.columns(blocks).map((block) => ({
+        start: block.start,
+        end: block.end,
+        collapsed: hidden.has(block.title),
+      }));
+      if (sameGroups(tab.columnGroups, wanted)) return;
+      await this.api.regroupColumns(id, tab.sheetId, tab.columnGroups, wanted);
+    });
+  }
+
+  /** The Scoreboard tab, added first if the Sheet predates it. */
+  private async scoreboardTab(id: string): Promise<TabLayout> {
+    const found = (await this.api.layout(id)).find((tab) => tab.title === SCOREBOARD_TAB.title);
+    if (found) return found;
+    const sheetId = await this.api.addTab(id, SCOREBOARD_TAB.title);
+    return { sheetId, title: SCOREBOARD_TAB.title, columnGroups: [] };
+  }
+
   resolveHeldPoint(
     sessionId: string,
     studentId: string,
@@ -289,4 +343,16 @@ export class GoogleSheet implements SheetGateway {
       await this.api.updateValues(id, cell, [[state]]);
     });
   }
+}
+
+function sameGroups(left: readonly ColumnGroup[], right: readonly ColumnGroup[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (group, at) =>
+        group.start === right[at]?.start &&
+        group.end === right[at]?.end &&
+        group.collapsed === right[at]?.collapsed,
+    )
+  );
 }

@@ -9,10 +9,12 @@ import type { PointState } from '../domain/points';
 import { isMember, type Group, type Student } from '../domain/group';
 import type { AttendanceRecord, Session } from '../domain/session';
 import type { StudentSummary } from '../domain/studentSummary';
+import { scoreboardBlocks } from '../domain/scoreboard';
 import {
   ATTENDANCE_TAB,
   BEHAVIOR_TAB,
   GROUPS_TAB,
+  SCOREBOARD_TAB,
   SESSIONS_TAB,
   STUDENTS_TAB,
   SUMMARY_TAB,
@@ -49,6 +51,7 @@ export class FakeSheet implements SheetGateway {
     ]);
     this.tabs.set(GROUPS_TAB.title, groupGrid(students, groups));
     this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header]);
+    this.tabs.set(SCOREBOARD_TAB.title, [SCOREBOARD_TAB.header]);
     this.tabs.set(SESSIONS_TAB.title, [
       SESSIONS_TAB.header,
       ...(seed.sessions ?? []).map(SESSIONS_TAB.encode),
@@ -133,6 +136,13 @@ export class FakeSheet implements SheetGateway {
 
   saveStudentSummaries(summaries: readonly StudentSummary[]): Promise<void> {
     this.tabs.set(SUMMARY_TAB.title, [SUMMARY_TAB.header, ...SUMMARY_TAB.block(summaries)]);
+    return Promise.resolve();
+  }
+
+  /** The values only. Column groups are a Sheets feature with no stand-in
+      here, so what hides a class is covered by the real adapter's tests. */
+  saveScoreboard(summaries: readonly StudentSummary[], groups: readonly Group[]): Promise<void> {
+    this.tabs.set(SCOREBOARD_TAB.title, SCOREBOARD_TAB.grid(scoreboardBlocks(summaries, groups)));
     return Promise.resolve();
   }
 
