@@ -11,7 +11,7 @@ import { EMPTY_LEDGER, type PointsLedger } from './score';
 import type { Group, Student } from './group';
 import type { AttendanceRecord, Session } from './session';
 import type { Snapshot } from './snapshot';
-import type { StudentSummary } from './studentSummary';
+import type { GroupFigures, StudentSummary } from './studentSummary';
 
 const STUDENTS: Student[] = [
   { id: 's1', name: 'Ana' },
@@ -32,10 +32,13 @@ function snapshotOf(over: Partial<Snapshot> = {}): Snapshot {
   };
 }
 
-const rowFor = (summaries: StudentSummary[], studentId: string): StudentSummary => {
+/** A Student's summary with their figures in GROUP alongside, the one Group
+    every Student here is in. */
+const rowFor = (summaries: StudentSummary[], studentId: string): StudentSummary & GroupFigures => {
   const row = summaries.find((candidate) => candidate.studentId === studentId);
-  if (!row) throw new Error(`no summary for ${studentId}`);
-  return row;
+  const figures = row?.groups.find((candidate) => candidate.groupId === GROUP.id);
+  if (!row || !figures) throw new Error(`no summary for ${studentId}`);
+  return { ...row, ...figures };
 };
 
 describe('afterRollCall', () => {
@@ -82,7 +85,7 @@ describe('afterBehaviorPoint', () => {
   const TODAY = '2026-08-26' as CalendarDate;
 
   it('moves the Score the moment the point is awarded', () => {
-    const point = awardBehavior('b1', 's1', TODAY, 'positive');
+    const point = awardBehavior('b1', 's1', 'G1', TODAY, 'positive');
     const summaries = afterBehaviorPoint(snapshotOf(), point);
 
     expect(rowFor(summaries, 's1').score).toBe(1);
@@ -90,7 +93,7 @@ describe('afterBehaviorPoint', () => {
   });
 
   it('writes the reason into the log with its sign, under the point’s own date', () => {
-    const point = awardBehavior('b1', 's1', TODAY, 'negative', 'threw a pen');
+    const point = awardBehavior('b1', 's1', 'G1', TODAY, 'negative', 'threw a pen');
     const summaries = afterBehaviorPoint(snapshotOf(), point);
 
     expect(rowFor(summaries, 's1').score).toBe(-1);
@@ -98,7 +101,7 @@ describe('afterBehaviorPoint', () => {
   });
 
   it('earns no line when no reason was given', () => {
-    const point = awardBehavior('b1', 's1', TODAY, 'positive');
+    const point = awardBehavior('b1', 's1', 'G1', TODAY, 'positive');
 
     expect(rowFor(afterBehaviorPoint(snapshotOf(), point), 's1').notes).toEqual([]);
   });

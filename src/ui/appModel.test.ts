@@ -169,6 +169,7 @@ describe('writing outside a roll call', () => {
     expect(model.state.pendingBehavior).toEqual({
       id: chosen,
       studentId: 's1',
+      groupId: 'G1',
       kind: 'positive',
       note: 'helped tidy up',
     });
@@ -252,7 +253,7 @@ describe('settling a held point', () => {
   it('moves the Score with the point, in the same write', async () => {
     const sheet = withHeldPoint();
     const model = await started(sheet);
-    const before = model.state.summaries.find((row) => row.studentId === 's1')?.score;
+    const before = model.state.summaries.find((row) => row.studentId === 's1')?.groups[0]?.score;
 
     await model.resolveHeldPoint(onlyHeld(model), true);
 
@@ -527,7 +528,6 @@ describe('the lists the screens show', () => {
 
     expect(model.state.held).toEqual([]);
     expect(model.state.summaries).toEqual([]);
-    expect(model.state.scores).toEqual([]);
   });
 
   it('carries every screen once the Sheet has been read', async () => {
@@ -535,8 +535,8 @@ describe('the lists the screens show', () => {
 
     expect(model.state.held.map((point) => point.studentName)).toEqual(['Amy']);
     expect(model.state.summaries.map((row) => row.name)).toEqual(['Amy', 'Ben']);
-    // Highest Score first: Ben's present point counts, Amy's is still held.
-    expect(model.state.scores.map((entry) => entry.name)).toEqual(['Ben', 'Amy']);
+    // Ben's present point counts, Amy's is still held.
+    expect(model.state.summaries.map((row) => row.groups[0]?.score)).toEqual([0, 1]);
   });
 
   it('is worked out again whenever the Snapshot changes', async () => {
@@ -545,8 +545,7 @@ describe('the lists the screens show', () => {
     await model.resolveHeldPoint(model.state.held[0]!, true);
 
     expect(model.state.held).toEqual([]);
-    expect(model.state.summaries.find((row) => row.name === 'Amy')?.score).toBe(1);
-    expect(model.state.scores.map((entry) => entry.name)).toEqual(['Amy', 'Ben']);
+    expect(model.state.summaries.find((row) => row.name === 'Amy')?.groups[0]?.score).toBe(1);
   });
 
   it('is left standing when the Sheet cannot be read back', async () => {

@@ -9,7 +9,7 @@
  * Every action leaves the state consistent before it returns, and reports the
  * change once, through the listener given to the constructor.
  */
-import { calendarDateOf, awardBehavior, signOf } from '../domain/behavior';
+import { calendarDateOf, awardBehavior, defaultBehaviorGroup, signOf } from '../domain/behavior';
 import { noteLine } from '../domain/notesLog';
 import type { CalendarDate } from '../domain/behavior';
 import {
@@ -19,7 +19,6 @@ import {
   type BehaviorKind,
 } from '../domain/points';
 import { heldPoints, type HeldPoint } from '../domain/heldPoints';
-import { scoreboard, type ScoreboardEntry } from '../domain/scoreboard';
 import { summarize, type StudentSummary } from '../domain/studentSummary';
 import type { Group, Student } from '../domain/group';
 import type { Session } from '../domain/session';
@@ -43,6 +42,8 @@ export type View = 'groups' | 'rollCall' | 'scoreboard' | 'summary' | 'notes' | 
 export interface PendingBehavior {
   id: string;
   studentId: string;
+  /** The Group the point will count in. */
+  groupId: string;
   kind: BehaviorKind;
   /** What they typed to explain it, kept only once a save has failed, so the
       retry offers the words back rather than an empty field. */
@@ -64,16 +65,19 @@ export interface AppState {
       would walk the whole Attendance Ledger on every tap. */
   held: readonly HeldPoint[];
   summaries: readonly StudentSummary[];
-  scores: readonly ScoreboardEntry[];
   rollCall: RollCall | null;
   /** The Student whose Note field is open, if any. Only one at a time. */
   noteFor: string | null;
   /** The Behavior Point being written, if any. */
   pendingBehavior: PendingBehavior | null;
+  /** The Group a Behavior Point counts in, for each Student the teacher has
+      picked one for. A Student not here gets `defaultBehaviorGroup`. */
+  behaviorGroups: ReadonlyMap<string, string>;
   /** Whether the Summary shows each count as a share of that Student's own
       Sessions instead of a number of days. */
   asShare: boolean;
-  /** The Group the Scoreboard is narrowed to, or null for everyone. */
+  /** The Group the Scoreboard shows, or null for the first Group with anyone
+      in it. There is no Scoreboard for everyone: points are kept by Group. */
   scoreGroupId: string | null;
   message: Message | null;
   busy: boolean;
@@ -98,13 +102,9 @@ function reasonFor(error: unknown): string {
 
 /** What the screens show for a given Snapshot, or nothing at all before the
     first read. */
-function viewsOf(snapshot: Snapshot | null): Pick<AppState, 'held' | 'summaries' | 'scores'> {
-  if (!snapshot) return { held: [], summaries: [], scores: [] };
-  return {
-    held: heldPoints(snapshot),
-    summaries: summarize(snapshot),
-    scores: scoreboard(snapshot),
-  };
+function viewsOf(snapshot: Snapshot | null): Pick<AppState, 'held' | 'summaries'> {
+  if (!snapshot) return { held: [], summaries: [] };
+  return { held: heldPoints(snapshot), summaries: summarize(snapshot) };
 }
 
 const INITIAL: AppState = {
@@ -112,10 +112,10 @@ const INITIAL: AppState = {
   snapshot: null,
   held: [],
   summaries: [],
-  scores: [],
   rollCall: null,
   noteFor: null,
   pendingBehavior: null,
+  behaviorGroups: new Map(),
   asShare: false,
   scoreGroupId: null,
   message: null,
@@ -229,8 +229,32 @@ export class AppModel {
     this.set({ rollCall: setNote(rollCall, studentId, text), noteFor: null });
   }
 
+  /** Choose +1 or -1 for a Student. It counts in the Group picked for them, or
+      the default one. A Student in no Group has nowhere for it to count. */
   chooseBehavior(studentId: string, kind: BehaviorKind): void {
-    this.set({ pendingBehavior: { id: this.clock.newId(), studentId, kind } });
+    const groupId = this.behaviorGroupOf(studentId);
+    if (groupId === undefined) return;
+    this.set({ pendingBehavior: { id: this.clock.newId(), studentId, groupId, kind } });
+  }
+
+  /** Pick which Group a Student's Behavior Point counts in. One Group at a
+      time. A point already chosen but not saved moves with the pick. */
+  chooseBehaviorGroup(studentId: string, groupId: string): void {
+    const behaviorGroups = new Map(this.current.behaviorGroups).set(studentId, groupId);
+    const pending = this.current.pendingBehavior;
+    this.set({
+      behaviorGroups,
+      ...(pending?.studentId === studentId ? { pendingBehavior: { ...pending, groupId } } : {}),
+    });
+  }
+
+  /** The Group a Student's Behavior Point would count in right now. */
+  behaviorGroupOf(studentId: string): string | undefined {
+    const picked = this.current.behaviorGroups.get(studentId);
+    if (picked !== undefined) return picked;
+    const snapshot = this.current.snapshot;
+    if (!snapshot) return undefined;
+    return defaultBehaviorGroup(studentId, snapshot.groups, snapshot.sessions)?.id;
   }
 
   cancelBehavior(): void {
@@ -241,8 +265,8 @@ export class AppModel {
     this.set({ asShare: !this.current.asShare });
   }
 
-  /** Narrow the Scoreboard to one Group, or pass null for everyone. */
-  showScoreGroup(groupId: string | null): void {
+  /** Show one Group's Scoreboard. */
+  showScoreGroup(groupId: string): void {
     this.set({ scoreGroupId: groupId });
   }
 
@@ -279,13 +303,24 @@ export class AppModel {
     if (!student) return;
 
     const today = this.today();
-    const point = awardBehavior(pending.id, pending.studentId, today, pending.kind, text);
+    const point = awardBehavior(
+      pending.id,
+      pending.studentId,
+      pending.groupId,
+      today,
+      pending.kind,
+      text,
+    );
+    // Which Group it counted in is only news when there was a choice.
+    const theirs = snapshot.groups.filter((group) => group.studentIds.includes(student.id));
+    const group = theirs.find((candidate) => candidate.id === pending.groupId);
+    const where = theirs.length > 1 && group !== undefined ? ` in ${group.name}` : '';
 
     this.set({ busy: true, message: { text: 'Saving…', isError: false } });
     try {
       await this.sheet.saveBehavior(point, snapshot);
       this.set({ pendingBehavior: null });
-      await this.reload(`${signOf(pending.kind)} for ${student.name}.`);
+      await this.reload(`${signOf(pending.kind)} for ${student.name}${where}.`);
     } catch (error) {
       this.set({ pendingBehavior: { ...pending, note: text } });
       this.fail(error);

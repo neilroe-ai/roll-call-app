@@ -50,3 +50,4 @@ Architecture decisions with lasting consequences are recorded as ADRs under
 - [0011 — The Summary follows the action, not the caller](docs/adr/0011-the-summary-follows-the-action.md)
 - [0012 — Drive decides which Sheet, not the browser](docs/adr/0012-drive-decides-which-sheet.md)
 - [0013 — The Scoreboard has its own tab](docs/adr/0013-the-scoreboard-tab.md)
+- [0014 — Points are kept by Group](docs/adr/0014-points-are-kept-by-group.md)

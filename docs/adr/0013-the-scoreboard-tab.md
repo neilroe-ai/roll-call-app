@@ -16,7 +16,9 @@ show one class at a time, the way the Scoreboard screen now can.
 
 ## Decision
 
-**A Scoreboard tab the app owns whole.** Everyone first, then one list per
+**A Scoreboard tab the app owns whole.** _Since
+[ADR 0014](0014-points-are-kept-by-group.md) there is no "Everyone" list, only
+one per Group._ Everyone first, then one list per
 Group in Groups Grid order, side by side: a name column, a Score column, and a
 blank column. Groups nobody is ticked into get no list, as they get no button on
 screen. It carries names and Scores only.

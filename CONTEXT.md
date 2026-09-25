@@ -60,7 +60,9 @@ _Avoid_: pending, provisional
 
 **Behavior Point**:
 A point the teacher awards or subtracts for a Student's conduct, worth +1 or -1.
-It belongs to a Student and a date, not to a Session.
+It belongs to a Student, a Group and a date, not to a Session. When the Student
+is in two or more Groups the teacher picks the one Group it counts in, starting
+from the Group she last took roll for.
 
 **Points Ledger**:
 Every Attendance Record and Behavior Point a Score is worked out from. It is
@@ -68,15 +70,17 @@ what the Sheet holds, not a separate total.
 _Avoid_: history, log (a Notes Log is a different thing)
 
 **Score**:
-A Student's single running total: attendance points, plus behavior points, plus
-their Adjustment.
+A Student's running total in one Group: attendance points from that Group's
+Sessions, plus behavior points given in that Group, plus their Adjustment for
+that Group. Points are kept by Group, so a Student in two Groups has two Scores
+and never a total across them.
 _Avoid_: total, tally, grade
 
 **Adjustment**:
-Figures the teacher types herself on the Students tab and the app adds to what
-the Points Ledger says — points and attendance carried in from paper before the
+Figures the teacher types herself on the Adjustments tab, one row per Student
+and Group, and the app adds to what the Points Ledger says for that Group — points and attendance carried in from paper before the
 app existed, or a correction to a figure the app got wrong. An Adjustment is an
-input, never a total: it stays in the column she owns and is never rewritten.
+input, never a total: it stays in the row she owns and is never rewritten.
 _Avoid_: opening balance, offset, manual override
 
 ### Notes
@@ -89,10 +93,10 @@ Student's Notes Log. A Note written on a marked Student is also kept on their
 Attendance Record.
 
 **Scoreboard**:
-Every Student's name and Score, highest first, and nothing else. Shown to the
-class, so it carries no Note, Attendance Status or Point State — only the total.
-It can be narrowed to one Group, showing only that Group's members. The Score
-stays the Student's whole Score, since points belong to a Student, not a Group.
+One Group's Students, each with their Score in that Group, highest first, and
+nothing else. Shown to the class, so it carries no Note, Attendance Status or
+Point State — only the Score. There is one per Group and none for everyone,
+since points are kept by Group.
 The Sheet has a Scoreboard tab too, for showing the class from a laptop: the
 same lists side by side, each one a column group she can hide or show.
 _Avoid_: leaderboard, ranking, results
@@ -104,9 +108,11 @@ bottom. A Note is only ever added to it, and it is the one thing on the Summary
 tab read back before the tab is rewritten.
 
 **Student Summary**:
-What the Summary tab says about one Student besides their name: their Groups,
-their Score, the Sessions they could have been at, their Attendance Counts with
-each one's share, their Attendance Credit, and their Notes Log. Every figure is worked out from the
+What the Summary tab says about one Student besides their name: for each of
+their Groups, their Score, the Sessions they could have been at, their
+Attendance Counts with each one's share, and their Attendance Credit; and their
+Notes Log, which belongs to the Student rather than a Group. The tab has one row
+per Student and Group, with the Notes Log on the Student's first row. Every figure is worked out from the
 Points Ledger and the Student's Adjustment, so the app rewrites the whole
 summary on each save. Nothing reads a total back out of it.
 Because every figure is derived, the app can work out what a summary will say
@@ -115,11 +121,12 @@ the action that moved it reach the Sheet in one write.
 _Avoid_: stats, report card
 
 **Attendance Credit**:
-The Sessions that count toward a Student graduating: the days present, plus the
+The Sessions in one Group that count toward a Student graduating: the days present, plus the
 sick and other days whose Held Point the teacher has awarded. A day still held,
 or denied, counts for nothing. Attendance carried in as an Adjustment counts in
 full apart from its absences. Shown on the Summary as a count and as a share of
-the Student's Sessions — the figure the teacher reads to decide who qualifies.
+the Student's Sessions in that Group — the figure the teacher reads to decide
+who qualifies.
 _Avoid_: attendance rate, eligibility, qualifying days
 
 **Snapshot**:

@@ -19,14 +19,19 @@ const groups = [
 
 /** One Student arrives with points already given on paper, so the demo shows
     what an Adjustment does to a Score. */
-const adjustments = new Map([
-  ['s1', { points: 12, counts: { present: 18, absent: 2, sick: 1, other: 0 } }],
-]);
+const adjustments = [
+  {
+    student: students[0] ?? { id: 's1', name: 'Amy Chen' },
+    group: groups[0] ?? { id: 'G1', name: 'Class 01', studentIds: [] },
+    adjustment: { points: 12, counts: { present: 18, absent: 2, sick: 1, other: 0 } },
+  },
+];
 
 /** Two Sessions already taken, so the demo has Held Points waiting to settle. */
 const sessions = [
   { id: 'mon', groupId: 'G1', takenAt: '2026-08-24T09:00:00+08:00' },
   { id: 'wed', groupId: 'G1', takenAt: '2026-08-26T09:00:00+08:00' },
+  { id: 'thu', groupId: 'G2', takenAt: '2026-08-27T15:00:00+08:00' },
 ];
 const attendance = [
   { sessionId: 'mon', studentId: 's1', status: 'present', pointState: 'awarded' },
@@ -47,6 +52,9 @@ const attendance = [
     note: 'family funeral',
   },
   { sessionId: 'wed', studentId: 's5', status: 'sick', pointState: 'held' },
+  { sessionId: 'thu', studentId: 's2', status: 'present', pointState: 'awarded' },
+  { sessionId: 'thu', studentId: 's4', status: 'present', pointState: 'awarded' },
+  { sessionId: 'thu', studentId: 's5', status: 'present', pointState: 'awarded' },
 ] as const;
 
 const root = document.querySelector<HTMLElement>('#app');

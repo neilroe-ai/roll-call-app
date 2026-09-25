@@ -17,6 +17,7 @@ const HELD: AttendanceRecord = {
 
 const seed = () => ({
   students: [{ id: 's1', name: 'Ana' }],
+  groups: [{ id: 'G1', name: 'Class 01', studentIds: ['s1'] }],
   sessions: [SESSION],
   attendance: [HELD],
 });

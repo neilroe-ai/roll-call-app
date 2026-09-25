@@ -14,6 +14,7 @@ const attendance = (studentId: string, pointState: AttendanceRecord['pointState'
 const behavior = (studentId: string, kind: BehaviorPoint['kind'], id: string): BehaviorPoint => ({
   id,
   studentId,
+  groupId: 'G1',
   date: '2026-08-25',
   kind,
 });
